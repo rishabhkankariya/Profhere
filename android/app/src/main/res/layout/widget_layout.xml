@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="14dp">
+
+    <!-- Header row: app name + online status -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ProfHere"
+            android:textStyle="bold"
+            android:textColor="#4F46E5"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/widget_login_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Offline"
+            android:textColor="#94A3B8"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+    <!-- Faculty name -->
+    <TextView
+        android:id="@+id/widget_faculty_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:text="Not logged in"
+        android:textColor="#0F172A"
+        android:textStyle="bold"
+        android:textSize="15sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Current status -->
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:text="--"
+        android:textColor="#6B7280"
+        android:textSize="11sp" />
+
+    <!-- Divider -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="7dp"
+        android:background="#E2E8F0"
+        android:contentDescription="@null" />
+
+    <!-- Row 1: Available | Busy | Lecture -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btn_available"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:gravity="center"
+            android:text="Available"
+            android:textColor="#16A34A"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_green" />
+
+        <TextView
+            android:id="@+id/btn_busy"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
+            android:gravity="center"
+            android:text="Busy"
+            android:textColor="#D97706"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_orange" />
+
+        <TextView
+            android:id="@+id/btn_lecture"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:gravity="center"
+            android:text="Lecture"
+            android:textColor="#DC2626"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_red" />
+
+    </LinearLayout>
+
+    <!-- Row 2: In Meeting | Away -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:orientation="horizontal"
+        android:layout_marginTop="6dp">
+
+        <TextView
+            android:id="@+id/btn_meeting"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="4dp"
+            android:gravity="center"
+            android:text="In Meeting"
+            android:textColor="#7C3AED"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_purple" />
+
+        <TextView
+            android:id="@+id/btn_away"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:gravity="center"
+            android:text="Away"
+            android:textColor="#6B7280"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_gray" />
+
+        <!-- Empty spacer to balance the row (3 cols in row 1, 2 in row 2) -->
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:background="@android:color/transparent" />
+
+    </LinearLayout>
+
+</LinearLayout>
