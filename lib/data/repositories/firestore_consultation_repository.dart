@@ -10,10 +10,10 @@ class FirestoreConsultationRepository {
     final d = doc.data() as Map<String, dynamic>;
     return Consultation(
       id: doc.id,
-      facultyId: d['facultyId'] as String,
-      studentId: d['studentId'] as String,
-      studentName: d['studentName'] as String,
-      purpose: d['purpose'] as String,
+      facultyId: d['facultyId'] as String? ?? '',
+      studentId: d['studentId'] as String? ?? '',
+      studentName: d['studentName'] as String? ?? '',
+      purpose: d['purpose'] as String? ?? '',
       notes: d['notes'] as String?,
       status: ConsultationStatus.values[d['statusIndex'] as int? ?? 0],
       requestedAt: (d['requestedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),

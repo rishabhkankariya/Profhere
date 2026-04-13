@@ -11,11 +11,11 @@ class FirestoreFacultyRepository implements FacultyRepository {
     final d = doc.data() as Map<String, dynamic>;
     return Faculty(
       id: doc.id,
-      name: d['name'] as String,
-      email: d['email'] as String,
-      department: d['department'] as String,
-      building: d['building'] as String,
-      cabinId: d['cabinId'] as String,
+      name: d['name'] as String? ?? 'Unknown',
+      email: d['email'] as String? ?? '',
+      department: d['department'] as String? ?? '',
+      building: d['building'] as String? ?? '',
+      cabinId: d['cabinId'] as String? ?? '',
       status: FacultyStatus.values[d['statusIndex'] as int? ?? 0],
       zone: d['zone'] as String?,
       specialization: d['specialization'] as String?,

@@ -54,15 +54,26 @@ class FirestoreAuthRepository implements AuthRepository {
         email: email.trim(), password: password);
     final fbUser = cred.user!;
 
-    // Check email verification
-    if (!fbUser.emailVerified) {
+    // Get Firestore profile first to check role
+    final doc = await _users.doc(fbUser.uid).get();
+
+    // Only enforce email verification for students
+    // Admin and faculty accounts are pre-created and don't need verification
+    if (doc.exists) {
+      final roleIndex = (doc.data() as Map<String, dynamic>)['roleIndex'] as int? ?? 0;
+      final isStudent = roleIndex == UserRole.student.index;
+      if (isStudent && !fbUser.emailVerified) {
+        await _auth.signOut();
+        throw Exception('Please verify your email before signing in. Check your inbox for the verification link.');
+      }
+    } else if (!fbUser.emailVerified) {
       await _auth.signOut();
       throw Exception('Please verify your email before signing in. Check your inbox for the verification link.');
     }
 
     await _users.doc(fbUser.uid).update({'lastLoginAt': FieldValue.serverTimestamp()});
-    final doc = await _users.doc(fbUser.uid).get();
-    return _fromDoc(doc, fbUser);
+    final updatedDoc = await _users.doc(fbUser.uid).get();
+    return _fromDoc(updatedDoc, fbUser);
   }
 
   // ── Email/Password register ───────────────────────────────────────────────

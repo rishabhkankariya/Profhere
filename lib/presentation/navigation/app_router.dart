@@ -44,7 +44,7 @@ String _homeRouteForRole(UserRole role) {
 String? _redirectForAuth(Ref ref, GoRouterState state) {
   final user = ref.read(authNotifierProvider).user;
   final loc  = state.matchedLocation;
-  const publicRoutes = {AppRoutes.splash, AppRoutes.login, AppRoutes.register};
+  const publicRoutes = {AppRoutes.splash, AppRoutes.login, AppRoutes.register, AppRoutes.phoneAuth};
   if (!publicRoutes.contains(loc) && user == null) return AppRoutes.login;
   if (user != null && (loc == AppRoutes.login || loc == AppRoutes.register)) {
     return _homeRouteForRole(user.role);

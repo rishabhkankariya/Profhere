@@ -112,7 +112,18 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
 
-    // ── Auth changes: sync widget login/logout ────────────────────────────
+    // ── Keep authNotifierProvider in sync with Firebase Auth stream ───────
+    // This ensures user is always populated after login/Google/Phone sign-in
+    ref.listen<AsyncValue<User?>>(authStateProvider, (_, next) {
+      next.whenData((firebaseUser) {
+        final currentUser = ref.read(authNotifierProvider).user;
+        if (firebaseUser != null && currentUser == null) {
+          ref.read(authNotifierProvider.notifier).hydrateFromRepository(firebaseUser);
+        } else if (firebaseUser == null && currentUser != null) {
+          ref.read(authNotifierProvider.notifier).hydrateFromRepository(null);
+        }
+      });
+    });
     ref.listen<AuthState>(authNotifierProvider, (_, next) async {
       NotificationService.currentUserId   = next.user?.id;
       NotificationService.currentUserName = next.user?.name;

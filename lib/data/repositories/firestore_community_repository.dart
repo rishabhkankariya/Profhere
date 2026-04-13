@@ -16,10 +16,10 @@ class FirestoreCommunityRepository {
     final d = doc.data() as Map<String, dynamic>;
     return CommunityMessage(
       id: doc.id,
-      senderId: d['senderId'] as String,
-      senderName: d['senderName'] as String,
-      senderRole: d['senderRole'] as String,
-      text: d['text'] as String,
+      senderId: d['senderId'] as String? ?? '',
+      senderName: d['senderName'] as String? ?? '',
+      senderRole: d['senderRole'] as String? ?? '',
+      text: d['text'] as String? ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       status: MessageStatus.values[d['status'] as int? ?? 0],
       isAnonymous: d['isAnonymous'] as bool? ?? false,
