@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/firestore_consultation_repository.dart';
 import '../../domain/entities/consultation.dart';
+import 'auth_provider.dart';
 
 final consultationRepositoryProvider =
     Provider<FirestoreConsultationRepository>((ref) {
@@ -8,8 +9,10 @@ final consultationRepositoryProvider =
 });
 
 final consultationsByFacultyProvider =
-    StreamProvider.family<List<Consultation>, String>((ref, facultyId) {
-  return ref.watch(consultationRepositoryProvider).watchByFaculty(facultyId);
+    StreamProvider.family<List<Consultation>, String>((ref, facultyId) async* {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState == null) { yield []; return; }
+  yield* ref.watch(consultationRepositoryProvider).watchByFaculty(facultyId);
 });
 
 class ConsultationNotifier extends StateNotifier<AsyncValue<void>> {

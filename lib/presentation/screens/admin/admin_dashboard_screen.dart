@@ -26,6 +26,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboardScreen> {
         title: const Text('Admin Dashboard'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.lock_reset_rounded, size: 20),
+            tooltip: 'Change My Password',
+            onPressed: () => _showChangePasswordSheet(context, ref),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout_rounded, size: 20),
             onPressed: () async {
               await ref.read(authNotifierProvider.notifier).logout();
@@ -83,8 +88,104 @@ class _AdminDashboardState extends ConsumerState<AdminDashboardScreen> {
     );
   }
 
-  void _showAddFacultySheet(BuildContext context, WidgetRef ref) {
-    final nameCtrl  = TextEditingController();
+  void _showChangePasswordSheet(BuildContext context, WidgetRef ref) {
+    final currentCtrl = TextEditingController();
+    final newCtrl     = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool obscure1 = true, obscure2 = true, obscure3 = true;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setS) => Padding(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Change My Password',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: currentCtrl,
+              obscureText: obscure1,
+              decoration: InputDecoration(
+                labelText: 'Current password',
+                prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure1 ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  onPressed: () => setS(() => obscure1 = !obscure1),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: newCtrl,
+              obscureText: obscure2,
+              decoration: InputDecoration(
+                labelText: 'New password',
+                prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure2 ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  onPressed: () => setS(() => obscure2 = !obscure2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmCtrl,
+              obscureText: obscure3,
+              decoration: InputDecoration(
+                labelText: 'Confirm new password',
+                prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure3 ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  onPressed: () => setS(() => obscure3 = !obscure3),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                if (currentCtrl.text.isEmpty || newCtrl.text.isEmpty) return;
+                if (newCtrl.text != confirmCtrl.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('New passwords do not match'),
+                    backgroundColor: Colors.red,
+                  ));
+                  return;
+                }
+                if (newCtrl.text.length < 6) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Password must be at least 6 characters'),
+                    backgroundColor: Colors.red,
+                  ));
+                  return;
+                }
+                Navigator.pop(context);
+                await ref.read(authNotifierProvider.notifier).changeOwnPassword(
+                  currentPassword: currentCtrl.text,
+                  newPassword: newCtrl.text,
+                );
+                if (context.mounted) {
+                  final err = ref.read(authNotifierProvider).error;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(err ?? 'Password changed successfully'),
+                    backgroundColor: err != null ? Colors.red : AppColors.success,
+                  ));
+                  if (err != null) ref.read(authNotifierProvider.notifier).clearError();
+                }
+              },
+              child: const Text('Change Password'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _showAddFacultySheet(BuildContext context, WidgetRef ref) {    final nameCtrl  = TextEditingController();
     final emailCtrl = TextEditingController();
     final deptCtrl  = TextEditingController();
     final bldgCtrl  = TextEditingController();
@@ -270,10 +371,136 @@ class _FacultyManagementTab extends ConsumerWidget {
                 onDelete: () => _confirmDelete(context, ref, faculties[i]),
                 onQr: () => _showQr(context, faculties[i]),
                 onStatus: () => _showStatusSheet(context, ref, faculties[i]),
+                onPassword: () => _showPasswordSheet(context, ref, faculties[i]),
               ),
             ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
+    );
+  }
+
+  void _showPasswordSheet(BuildContext context, WidgetRef ref, Faculty f) {
+    final passCtrl    = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool obscure1 = true, obscure2 = true;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setS) => Padding(
+          padding: EdgeInsets.only(
+            left: 24, right: 24, top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.key_rounded, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(f.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                const Text('Set login password', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ])),
+            ]),
+            const SizedBox(height: 6),
+            // Info about what this does
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'This creates a Firebase Auth account for ${f.name} using their email (${f.email}) and the password you set. They can then log in with these credentials.',
+                style: const TextStyle(fontSize: 12, color: AppColors.primary, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passCtrl,
+              obscureText: obscure1,
+              decoration: InputDecoration(
+                labelText: 'Set password',
+                prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure1 ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  onPressed: () => setS(() => obscure1 = !obscure1),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmCtrl,
+              obscureText: obscure2,
+              decoration: InputDecoration(
+                labelText: 'Confirm password',
+                prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(obscure2 ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+                  onPressed: () => setS(() => obscure2 = !obscure2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Alternative: send reset email
+            TextButton.icon(
+              onPressed: () async {
+                Navigator.pop(context);
+                await ref.read(authNotifierProvider.notifier).sendFacultyPasswordReset(f.email);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Password reset email sent to ${f.email}'),
+                    backgroundColor: AppColors.success,
+                  ));
+                }
+              },
+              icon: const Icon(Icons.email_outlined, size: 16),
+              label: const Text('Send reset email instead'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () async {
+                if (passCtrl.text.isEmpty) return;
+                if (passCtrl.text != confirmCtrl.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Passwords do not match'),
+                    backgroundColor: Colors.red,
+                  ));
+                  return;
+                }
+                if (passCtrl.text.length < 6) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Minimum 6 characters'),
+                    backgroundColor: Colors.red,
+                  ));
+                  return;
+                }
+                Navigator.pop(context);
+                await ref.read(authNotifierProvider.notifier).createFacultyAccount(
+                  email: f.email,
+                  password: passCtrl.text,
+                  facultyFirestoreId: f.id,
+                );
+                if (context.mounted) {
+                  final err = ref.read(authNotifierProvider).error;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(err != null
+                        ? 'Error: $err'
+                        : '${f.name} account created. They can now log in.'),
+                    backgroundColor: err != null ? Colors.red : AppColors.success,
+                  ));
+                  if (err != null) ref.read(authNotifierProvider.notifier).clearError();
+                }
+              },
+              child: const Text('Create Account & Set Password'),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -535,8 +762,8 @@ class _FacultyManagementTab extends ConsumerWidget {
 
 class _FacultyAdminCard extends ConsumerWidget {
   final Faculty faculty;
-  final VoidCallback onEdit, onDelete, onQr, onStatus;
-  const _FacultyAdminCard({required this.faculty, required this.onEdit, required this.onDelete, required this.onQr, required this.onStatus});
+  final VoidCallback onEdit, onDelete, onQr, onStatus, onPassword;
+  const _FacultyAdminCard({required this.faculty, required this.onEdit, required this.onDelete, required this.onQr, required this.onStatus, required this.onPassword});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -585,6 +812,7 @@ class _FacultyAdminCard extends ConsumerWidget {
           _ActionBtn(icon: Icons.swap_horiz_rounded, label: 'Status', onTap: onStatus),
           _ActionBtn(icon: Icons.qr_code_2_rounded,  label: 'QR Code', onTap: onQr),
           _ActionBtn(icon: Icons.edit_outlined,       label: 'Edit',    onTap: onEdit),
+          _ActionBtn(icon: Icons.key_rounded,         label: 'Password', onTap: onPassword),
           _ActionBtn(icon: Icons.delete_outline_rounded, label: 'Delete', onTap: onDelete, color: AppColors.error),
         ]),
       ]),

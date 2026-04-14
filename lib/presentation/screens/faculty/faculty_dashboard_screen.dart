@@ -22,11 +22,40 @@ class FacultyDashboardScreen extends ConsumerStatefulWidget {
 
 class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
   int _tab = 0;
+  String? _facultyId; // resolved once, never reset
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveFacultyId();
+  }
+
+  /// Resolve the Firestore doc ID once at startup and store it.
+  /// After this, we stream the doc directly by ID — no email lookups on rebuild.
+  Future<void> _resolveFacultyId() async {
+    final user = ref.read(authNotifierProvider).user;
+    if (user?.email == null) return;
+    try {
+      final list = await ref.read(facultyRepositoryProvider).getFacultiesOnce();
+      final faculty = list.firstWhere(
+        (f) => f.email.toLowerCase() == user!.email.toLowerCase(),
+      );
+      if (mounted) setState(() => _facultyId = faculty.id);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authNotifierProvider).user;
-    final facultyId = user?.id;
+
+    // Once we have the facultyId, stream that specific doc directly.
+    // facultyByIdStreamProvider watches a single Firestore document —
+    // it never restarts due to auth changes, never yields null on rebuild.
+    final facultyAsync = _facultyId != null
+        ? ref.watch(facultyByIdStreamProvider(_facultyId!))
+        : const AsyncValue<Faculty?>.data(null);
+
+    final faculty = facultyAsync.value;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -46,14 +75,16 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
           ),
         ],
       ),
-      body: Column(children: [
-        _buildTabBar(),
-        Expanded(child: IndexedStack(index: _tab, children: [
-          _OverviewTab(facultyId: facultyId),
-          _QueueTab(facultyId: facultyId),
-          _ScheduleTab(facultyId: facultyId),
-        ])),
-      ]),
+      body: _facultyId == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(children: [
+              _buildTabBar(),
+              Expanded(child: IndexedStack(index: _tab, children: [
+                _OverviewTab(faculty: faculty, facultyId: _facultyId),
+                _QueueTab(facultyId: _facultyId),
+                _ScheduleTab(facultyId: _facultyId),
+              ])),
+            ]),
     );
   }
 
@@ -91,31 +122,22 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
+// Now receives faculty directly from the stream in the parent — no re-derivation,
+// no caching hacks. The parent watches facultyByEmailStreamProvider which is a
+// live Firestore stream, so any status change instantly flows here.
 class _OverviewTab extends ConsumerWidget {
+  final Faculty? faculty;
   final String? facultyId;
-  const _OverviewTab({this.facultyId});
+  const _OverviewTab({this.faculty, this.facultyId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ✅ Watch the STREAM — equivalent to WebSocket: UI rebuilds instantly on any change
-    // This is the key fix: facultyListProvider is a StreamProvider backed by Hive stream
-    // When admin or faculty updates status → Hive emits → stream fires → UI rebuilds
-    final allFacultiesAsync = ref.watch(facultyListProvider);
-
-    // Derive the current faculty's live data from the stream (not a one-shot Future)
-    final liveFaculty = allFacultiesAsync.whenData(
-      (list) => facultyId != null
-          ? list.where((f) => f.id == facultyId).firstOrNull
-          : null,
-    ).value;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        // Hero card — now driven by stream, updates instantly
-        _StatusCard(faculty: liveFaculty, facultyId: facultyId, ref: ref, context: context),
+        _StatusCard(faculty: faculty, facultyId: facultyId, ref: ref, context: context),
         const SizedBox(height: 12),
-        _buildQuickActions(context, ref, facultyId, liveFaculty?.status),
+        _buildQuickActions(context, ref, facultyId, faculty?.status),
         const SizedBox(height: 12),
         _buildQueueSummary(ref, facultyId),
       ]),
@@ -141,9 +163,7 @@ class _OverviewTab extends ConsumerWidget {
           isActive: currentStatus == s,
           onTap: () {
             if (id == null) return;
-            // ✅ Future — equivalent to Promise: fire-and-forget async write
             ref.read(facultyNotifierProvider.notifier).updateStatus(id, s);
-            // Sync home screen widget
             WidgetService.updateStatus(s);
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text('Status set to ${s.label}'),

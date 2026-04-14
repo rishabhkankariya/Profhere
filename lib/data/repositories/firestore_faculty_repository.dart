@@ -8,27 +8,27 @@ class FirestoreFacultyRepository implements FacultyRepository {
   final _col = FirebaseFirestore.instance.collection('faculty');
 
   Faculty _fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
     return Faculty(
       id: doc.id,
-      name: d['name'] as String? ?? 'Unknown',
-      email: d['email'] as String? ?? '',
-      department: d['department'] as String? ?? '',
-      building: d['building'] as String? ?? '',
-      cabinId: d['cabinId'] as String? ?? '',
-      status: FacultyStatus.values[d['statusIndex'] as int? ?? 0],
-      zone: d['zone'] as String?,
-      specialization: d['specialization'] as String?,
-      bio: d['bio'] as String?,
-      avatarUrl: d['avatarUrl'] as String?,
-      phoneNumber: d['phoneNumber'] as String?,
-      publicationsCount: d['publicationsCount'] as int? ?? 0,
+      name: d['name']?.toString() ?? 'Unknown',
+      email: d['email']?.toString() ?? '',
+      department: d['department']?.toString() ?? '',
+      building: d['building']?.toString() ?? '',
+      cabinId: d['cabinId']?.toString() ?? '',
+      status: FacultyStatus.values[(d['statusIndex'] as num?)?.toInt() ?? 0],
+      zone: d['zone']?.toString(),
+      specialization: d['specialization']?.toString(),
+      bio: d['bio']?.toString(),
+      avatarUrl: d['avatarUrl']?.toString(),
+      phoneNumber: d['phoneNumber']?.toString(),
+      publicationsCount: (d['publicationsCount'] as num?)?.toInt() ?? 0,
       rating: (d['rating'] as num?)?.toDouble() ?? 0.0,
-      consultationCount: d['consultationCount'] as int? ?? 0,
+      consultationCount: (d['consultationCount'] as num?)?.toInt() ?? 0,
       lastUpdated: (d['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
       expectedReturnAt: (d['expectedReturnAt'] as Timestamp?)?.toDate(),
       manualOverrideUntil: (d['manualOverrideUntil'] as Timestamp?)?.toDate(),
-      activeContext: d['activeContext'] as String?,
+      activeContext: d['activeContext']?.toString(),
     );
   }
 
@@ -56,6 +56,14 @@ class FirestoreFacultyRepository implements FacultyRepository {
   @override
   Stream<List<Faculty>> getFaculties() {
     return _col.snapshots().map((s) => s.docs.map(_fromDoc).toList());
+  }
+
+  /// Stream a single faculty document by ID — most stable way to watch one doc.
+  Stream<Faculty?> getFacultyStream(String id) {
+    return _col.doc(id).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return _fromDoc(doc);
+    });
   }
 
   @override

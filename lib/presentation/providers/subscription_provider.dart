@@ -13,7 +13,7 @@ class SubscriptionNotifier extends StateNotifier<Set<String>> {
     if (userId.isEmpty) return {};
     final raw = HiveService.settings.get('subs_$userId');
     if (raw == null) return {};
-    return (raw as List).cast<String>().toSet();
+    return (raw as List).whereType<String>().toSet();
   }
 
   Future<void> toggle(String facultyId) async {

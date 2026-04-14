@@ -2,17 +2,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/notification_service.dart';
 import '../../data/repositories/firestore_community_repository.dart';
 import '../../domain/entities/community_message.dart';
+import 'auth_provider.dart';
 import 'prefs_provider.dart';
 
 final communityRepositoryProvider = Provider<FirestoreCommunityRepository>((ref) {
   return FirestoreCommunityRepository();
 });
 
-final communityMessagesProvider = StreamProvider<List<CommunityMessage>>((ref) {
+final communityMessagesProvider = StreamProvider<List<CommunityMessage>>((ref) async* {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState == null) { yield []; return; }
+
   final repo  = ref.watch(communityRepositoryProvider);
   final prefs = ref.watch(userPrefsProvider);
   CommunityMessage? lastSeen;
-  return repo.watch().map((msgs) {
+  yield* repo.watch().map((msgs) {
     if (msgs.isNotEmpty) {
       final latest = msgs.last;
       if (lastSeen == null || latest.id != lastSeen!.id) {

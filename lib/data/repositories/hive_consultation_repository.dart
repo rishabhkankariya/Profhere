@@ -21,22 +21,22 @@ class HiveConsultationRepository {
 
   Consultation _fromMap(Map map) {
     return Consultation(
-      id: map['id'] as String,
-      facultyId: map['facultyId'] as String,
-      studentId: map['studentId'] as String,
-      studentName: map['studentName'] as String,
-      purpose: map['purpose'] as String,
-      notes: map['notes'] as String?,
-      status: ConsultationStatus.values[map['statusIndex'] as int],
-      requestedAt: DateTime.parse(map['requestedAt'] as String),
+      id: map['id']?.toString() ?? '',
+      facultyId: map['facultyId']?.toString() ?? '',
+      studentId: map['studentId']?.toString() ?? '',
+      studentName: map['studentName']?.toString() ?? 'Unknown',
+      purpose: map['purpose']?.toString() ?? '',
+      notes: map['notes']?.toString(),
+      status: ConsultationStatus.values[(map['statusIndex'] as num?)?.toInt() ?? 0],
+      requestedAt: DateTime.tryParse(map['requestedAt']?.toString() ?? '') ?? DateTime.now(),
       startedAt: map['startedAt'] != null
-          ? DateTime.parse(map['startedAt'] as String)
+          ? DateTime.tryParse(map['startedAt']?.toString() ?? '')
           : null,
       completedAt: map['completedAt'] != null
-          ? DateTime.parse(map['completedAt'] as String)
+          ? DateTime.tryParse(map['completedAt']?.toString() ?? '')
           : null,
-      position: map['position'] as int,
-      waitTimeMinutes: map['waitTimeMinutes'] as int? ?? 0,
+      position: (map['position'] as num?)?.toInt() ?? 0,
+      waitTimeMinutes: (map['waitTimeMinutes'] as num?)?.toInt() ?? 0,
     );
   }
 

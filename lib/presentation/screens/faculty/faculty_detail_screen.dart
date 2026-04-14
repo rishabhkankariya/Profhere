@@ -139,9 +139,11 @@ class _DetailView extends ConsumerWidget {
   }
 
   Widget _buildStatusCard(AsyncValue<List<Consultation>> queueAsync) {
-    final waitingCount = queueAsync.whenData(
-      (list) => list.where((c) => c.status == ConsultationStatus.pending).length,
-    ).value ?? 0;
+    // Show 0 while loading — never show grey block
+    final waitingCount = queueAsync.maybeWhen(
+      data: (list) => list.where((c) => c.status == ConsultationStatus.pending).length,
+      orElse: () => 0,
+    );
 
     return Container(
       padding: const EdgeInsets.all(16),

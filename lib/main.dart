@@ -4,12 +4,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:profhere/core/services/notification_service.dart';
-import 'package:profhere/core/services/permission_service.dart';
 import 'package:profhere/core/services/widget_service.dart';
 import 'package:profhere/core/theme/app_theme.dart';
 import 'package:profhere/data/datasources/local/hive_service.dart';
 import 'package:profhere/data/mock/mock_data_seeder.dart';
 import 'package:profhere/domain/entities/faculty.dart';
+import 'package:profhere/domain/entities/user.dart';
+import 'package:profhere/firebase_options.dart';
 import 'package:profhere/presentation/navigation/app_router.dart';
 import 'package:profhere/presentation/providers/auth_provider.dart';
 import 'package:profhere/presentation/providers/faculty_provider.dart';
@@ -19,7 +20,7 @@ import 'package:profhere/presentation/screens/onboarding/permission_screen.dart'
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // Hive kept only for local settings (widget prefs, subscriptions, user prefs)
   await HiveService.initSettingsOnly();
   await WidgetService.init();
@@ -73,13 +74,16 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
     final widgetStatus = await WidgetService.readWidgetStatus();
     if (widgetStatus == null) return;
 
-    // Get current status from Hive
-    final current = await ref.read(facultyRepositoryProvider).getFacultyById(user.id);
-    if (current == null) return;
+    // Look up faculty doc by email
+    final allFaculty = await ref.read(facultyRepositoryProvider).getFacultiesOnce();
+    Faculty? faculty;
+    try {
+      faculty = allFaculty.firstWhere(
+          (f) => f.email.toLowerCase() == user.email.toLowerCase());
+    } catch (_) { return; }
 
-    // Only update if widget has a different status
-    if (current.status != widgetStatus) {
-      await ref.read(facultyNotifierProvider.notifier).updateStatus(user.id, widgetStatus);
+    if (faculty.status != widgetStatus) {
+      await ref.read(facultyNotifierProvider.notifier).updateStatus(faculty.id, widgetStatus);
     }
   }
 
@@ -103,8 +107,15 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
     final status = WidgetService.statusFromUri(uri);
     if (status == null) return;
     final user = ref.read(authNotifierProvider).user;
-    if (user == null) return;
-    await ref.read(facultyNotifierProvider.notifier).updateStatus(user.id, status);
+    if (user == null || user.role.name != 'faculty') return;
+    // Look up faculty doc by email
+    final allFaculty = await ref.read(facultyRepositoryProvider).getFacultiesOnce();
+    Faculty? faculty;
+    try {
+      faculty = allFaculty.firstWhere(
+          (f) => f.email.toLowerCase() == user.email.toLowerCase());
+    } catch (_) { return; }
+    await ref.read(facultyNotifierProvider.notifier).updateStatus(faculty.id, status);
     await WidgetService.updateStatus(status);
   }
 
@@ -129,11 +140,18 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
       NotificationService.currentUserName = next.user?.name;
 
       if (next.user?.role.name == 'faculty') {
-        final facultyId = next.user!.id;
-        final faculty = await ref.read(facultyRepositoryProvider).getFacultyById(facultyId);
+        // Look up faculty doc by email (doc IDs differ from Auth UIDs)
+        final email = next.user!.email;
+        final allFaculty = await ref.read(facultyRepositoryProvider).getFacultiesOnce();
+        Faculty? faculty;
+        try {
+          faculty = allFaculty.firstWhere(
+              (f) => f.email.toLowerCase() == email.toLowerCase());
+        } catch (_) {}
+
         if (faculty != null) {
           await WidgetService.onFacultyLogin(
-            facultyId: facultyId,
+            facultyId: faculty.id,
             facultyName: faculty.name,
             status: faculty.status,
           );
@@ -149,10 +167,26 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
       final user = ref.read(authNotifierProvider).user;
 
       next.whenData((list) async {
-        // 1. Keep widget in sync for faculty users
-        if (user?.role.name == 'faculty') {
-          final me = list.where((f) => f.id == user!.id).firstOrNull;
-          if (me != null) await WidgetService.updateStatus(me.status);
+        // 1. Keep widget in sync for faculty users — match by email
+        // Only update widget if status actually changed (avoid unnecessary writes)
+        if (user?.role.name == 'faculty' && user?.email != null) {
+          Faculty? me;
+          try {
+            me = list.firstWhere(
+                (f) => f.email.toLowerCase() == user!.email.toLowerCase());
+          } catch (_) {}
+          if (me != null) {
+            final prevList = prev?.value;
+            Faculty? prevMe;
+            try {
+              prevMe = prevList?.firstWhere(
+                  (f) => f.email.toLowerCase() == user!.email.toLowerCase());
+            } catch (_) {}
+            // Only call WidgetService if status actually changed
+            if (prevMe == null || prevMe.status != me.status) {
+              await WidgetService.updateStatus(me.status);
+            }
+          }
         }
 
         // 2. Subscription notifications for student users

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:convert';
@@ -6,7 +6,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/toast.dart';
 import '../../../domain/entities/faculty.dart';
 import '../../../domain/entities/user.dart';
-import '../../../domain/entities/consultation.dart';
 import '../../providers/faculty_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/consultation_provider.dart';
@@ -295,7 +294,7 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _FacultyCard extends ConsumerWidget {
+class _FacultyCard extends StatelessWidget {
   final Faculty faculty;
   final bool isSubscribed;
   final VoidCallback onTap;
@@ -305,28 +304,11 @@ class _FacultyCard extends ConsumerWidget {
       required this.onTap, this.onQueue, required this.onSubscribe});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentUserId = ref.watch(authNotifierProvider).user?.id ?? '';
-    final queueAsync = ref.watch(consultationsByFacultyProvider(faculty.id));
-
-    final waitingCount = queueAsync.whenData(
-      (list) => list.where((c) => c.status == ConsultationStatus.pending).length,
-    ).value ?? 0;
-
-    // My active request for this faculty
-    final myRequest = queueAsync.whenData((list) => list.where((c) =>
-        c.studentId == currentUserId &&
-        (c.status == ConsultationStatus.pending ||
-            c.status == ConsultationStatus.inProgress)).firstOrNull).value;
-
-    final isInQueue = myRequest != null;
-    final isActive  = myRequest?.status == ConsultationStatus.inProgress;
-
-    // Border highlights: in-queue > subscribed > default
-    final borderColor = isInQueue
-        ? (isActive ? AppColors.success.withValues(alpha: 0.5) : AppColors.primary.withValues(alpha: 0.4))
-        : (isSubscribed ? AppColors.warning.withValues(alpha: 0.4) : AppColors.border);
-    final borderWidth = isInQueue || isSubscribed ? 1.5 : 1.0;
+  Widget build(BuildContext context) {
+    final borderColor = isSubscribed
+        ? AppColors.warning.withValues(alpha: 0.4)
+        : AppColors.border;
+    final borderWidth = isSubscribed ? 1.5 : 1.0;
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
@@ -340,141 +322,85 @@ class _FacultyCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              // Avatar
-              Stack(children: [
-                FacultyAvatar(
-                  avatarBase64: faculty.avatarUrl,
-                  initials: faculty.initials,
-                  size: 50,
-                  borderRadius: 14,
-                ),
-                Positioned(right: 0, bottom: 0,
-                  child: Container(width: 13, height: 13,
-                    decoration: BoxDecoration(color: faculty.status.color,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.surface, width: 2)))),
-                if (isSubscribed)
-                  Positioned(right: -2, top: -2,
-                    child: Container(width: 16, height: 16,
-                      decoration: BoxDecoration(color: AppColors.warning,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.surface, width: 1.5)),
-                      child: const Icon(Icons.star_rounded, size: 9, color: Colors.white))),
-              ]),
-              const SizedBox(width: 12),
-              // Info
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(faculty.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis, maxLines: 1),
-                const SizedBox(height: 2),
-                Row(children: [
-                  Flexible(
-                    child: Text(faculty.department, style: const TextStyle(fontSize: 12, color: AppColors.textMuted), overflow: TextOverflow.ellipsis),
-                  ),
-                  const SizedBox(width: 6),
-                  _StatusBadge(faculty.status),
-                ]),
-                if (waitingCount > 0) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(color: AppColors.warningBg, borderRadius: BorderRadius.circular(6)),
-                    child: Text('$waitingCount waiting',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.warning))),
-                ],
-              ])),
-              const SizedBox(width: 8),
-              // Right actions
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                // Star subscription button
-                GestureDetector(
-                  onTap: onSubscribe,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(
-                      color: isSubscribed ? AppColors.warning.withValues(alpha: 0.12) : AppColors.surfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(isSubscribed ? Icons.star_rounded : Icons.star_outline_rounded,
-                        size: 18, color: isSubscribed ? AppColors.warning : AppColors.textMuted),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Queue button or status indicator
-                if (isInQueue)
-                  // Already in queue — show position badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isActive ? AppColors.successBg : AppColors.primaryLight,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isActive ? AppColors.success.withValues(alpha: 0.4) : AppColors.primary.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(
-                        isActive ? Icons.play_circle_rounded : Icons.queue_rounded,
-                        size: 14,
-                        color: isActive ? AppColors.success : AppColors.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isActive ? 'Active' : '#${myRequest.position}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: isActive ? AppColors.success : AppColors.primary,
-                        ),
-                      ),
-                    ]),
-                  )
-                else if (onQueue != null)
-                  // Show Queue button if available
-                  SizedBox(
-                    height: 32,
-                    child: ElevatedButton(
-                      onPressed: onQueue,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                      child: const Text('Queue'),
-                    ),
-                  ),
-              ]),
-            ]),
-            // ── "You're in queue" banner shown below the card row ──────────
-            if (isInQueue) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.successBg : AppColors.primaryLight,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(children: [
-                  Icon(
-                    isActive ? Icons.play_circle_outline_rounded : Icons.access_time_rounded,
-                    size: 14,
-                    color: isActive ? AppColors.success : AppColors.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(
-                    isActive
-                        ? 'Your consultation is in progress — go to the cabin'
-                        : 'You are #${myRequest.position} in queue · ~${myRequest.waitTimeMinutes} min wait',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isActive ? AppColors.success : AppColors.primary,
-                    ),
-                  )),
-                ]),
+          child: Row(children: [
+            // Avatar with status dot
+            Stack(children: [
+              FacultyAvatar(
+                avatarBase64: faculty.avatarUrl,
+                initials: faculty.initials,
+                size: 50,
+                borderRadius: 14,
               ),
-            ],
+              Positioned(right: 0, bottom: 0,
+                child: Container(width: 13, height: 13,
+                  decoration: BoxDecoration(
+                    color: faculty.status.color,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.surface, width: 2),
+                  ))),
+              if (isSubscribed)
+                Positioned(right: -2, top: -2,
+                  child: Container(width: 16, height: 16,
+                    decoration: BoxDecoration(
+                      color: AppColors.warning,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.surface, width: 1.5),
+                    ),
+                    child: const Icon(Icons.star_rounded, size: 9, color: Colors.white))),
+            ]),
+            const SizedBox(width: 12),
+            // Name + department + status
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(faculty.name,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  overflow: TextOverflow.ellipsis, maxLines: 1),
+              const SizedBox(height: 3),
+              Row(children: [
+                Flexible(
+                  child: Text(faculty.department,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(width: 6),
+                _StatusBadge(faculty.status),
+              ]),
+            ])),
+            const SizedBox(width: 8),
+            // Star + Queue buttons
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              GestureDetector(
+                onTap: onSubscribe,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: isSubscribed
+                        ? AppColors.warning.withValues(alpha: 0.12)
+                        : AppColors.surfaceElevated,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    isSubscribed ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 18,
+                    color: isSubscribed ? AppColors.warning : AppColors.textMuted,
+                  ),
+                ),
+              ),
+              if (onQueue != null) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 32,
+                  child: ElevatedButton(
+                    onPressed: onQueue,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                    child: const Text('Queue'),
+                  ),
+                ),
+              ],
+            ]),
           ]),
         ),
       ),

@@ -13,25 +13,23 @@ class FirestoreCommunityRepository {
   final _col = FirebaseFirestore.instance.collection('community');
 
   CommunityMessage _fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
     return CommunityMessage(
       id: doc.id,
-      senderId: d['senderId'] as String? ?? '',
-      senderName: d['senderName'] as String? ?? '',
-      senderRole: d['senderRole'] as String? ?? '',
-      text: d['text'] as String? ?? '',
+      senderId: d['senderId']?.toString() ?? '',
+      senderName: d['senderName']?.toString() ?? 'Anonymous',
+      senderRole: d['senderRole']?.toString() ?? 'Student',
+      text: d['text']?.toString() ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      status: MessageStatus.values[d['status'] as int? ?? 0],
+      status: MessageStatus.values[(d['status'] as num?)?.toInt() ?? 0],
       isAnonymous: d['isAnonymous'] as bool? ?? false,
-      senderAvatar: d['senderAvatar'] as String?,
-      replyToId: d['replyToId'] as String?,
-      replyToText: d['replyToText'] as String?,
-      replyToSender: d['replyToSender'] as String?,
+      senderAvatar: d['senderAvatar']?.toString(),
+      replyToId: d['replyToId']?.toString(),
+      replyToText: d['replyToText']?.toString(),
+      replyToSender: d['replyToSender']?.toString(),
       isPinned: d['isPinned'] as bool? ?? false,
       editedAt: (d['editedAt'] as Timestamp?)?.toDate(),
-      reactions: d['reactions'] != null
-          ? Map<String, String>.from(d['reactions'] as Map)
-          : {},
+      reactions: (d['reactions'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? {},
     );
   }
 
@@ -95,7 +93,7 @@ class FirestoreCommunityRepository {
 
   Future<void> togglePin(String id) async {
     final doc = await _col.doc(id).get();
-    final current = (doc.data() as Map<String, dynamic>)['isPinned'] as bool? ?? false;
+    final current = Map<String, dynamic>.from(doc.data() as Map? ?? {})['isPinned'] as bool? ?? false;
     await _col.doc(id).update({'isPinned': !current});
   }
 

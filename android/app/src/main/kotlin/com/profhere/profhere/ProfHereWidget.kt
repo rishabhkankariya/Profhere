@@ -96,10 +96,12 @@ class ProfHereWidget : HomeWidgetProvider() {
         statusLabel: String,
         requestCode: Int,
     ): PendingIntent {
-        val intent = Intent(context, ProfHereWidget::class.java).apply {
-            action = ACTION_STATUS
+        val intent = Intent(ACTION_STATUS).apply {
+            component = ComponentName(context, ProfHereWidget::class.java)
             putExtra(EXTRA_STATUS, statusValue)
             putExtra(EXTRA_LABEL, statusLabel)
+            // Explicit package prevents broadcast being swallowed on MIUI/Samsung
+            setPackage(context.packageName)
         }
         return PendingIntent.getBroadcast(
             context, requestCode, intent,

@@ -7,7 +7,7 @@ class FirestoreConsultationRepository {
   final _col = FirebaseFirestore.instance.collection('consultations');
 
   Consultation _fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
     return Consultation(
       id: doc.id,
       facultyId: d['facultyId'] as String? ?? '',
@@ -25,32 +25,37 @@ class FirestoreConsultationRepository {
   }
 
   Stream<List<Consultation>> watchByFaculty(String facultyId) {
+    // No orderBy to avoid composite index requirement — sort in Dart
     return _col
         .where('facultyId', isEqualTo: facultyId)
-        .orderBy('position')
         .snapshots()
-        .map((s) => s.docs.map(_fromDoc).toList());
+        .map((s) {
+          final list = s.docs.map(_fromDoc).toList();
+          list.sort((a, b) => a.position.compareTo(b.position));
+          return list;
+        });
   }
 
   Future<List<Consultation>> getByFaculty(String facultyId) async {
     final snap = await _col
         .where('facultyId', isEqualTo: facultyId)
-        .orderBy('position')
         .get();
-    return snap.docs.map(_fromDoc).toList();
+    final list = snap.docs.map(_fromDoc).toList();
+    list.sort((a, b) => a.position.compareTo(b.position));
+    return list;
   }
 
   Future<bool> hasActiveRequest(String studentId, String facultyId) async {
+    // Query only by studentId to avoid composite index, filter in Dart
     final snap = await _col
         .where('studentId', isEqualTo: studentId)
         .where('facultyId', isEqualTo: facultyId)
-        .where('statusIndex', whereIn: [
-          ConsultationStatus.pending.index,
-          ConsultationStatus.inProgress.index,
-        ])
-        .limit(1)
         .get();
-    return snap.docs.isNotEmpty;
+    return snap.docs.any((doc) {
+      final idx = doc.data()['statusIndex'] as int? ?? 0;
+      return idx == ConsultationStatus.pending.index ||
+             idx == ConsultationStatus.inProgress.index;
+    });
   }
 
   Future<Consultation> joinQueue({
@@ -59,16 +64,16 @@ class FirestoreConsultationRepository {
     required String studentName,
     required String purpose,
   }) async {
-    // Count active queue entries for position
+    // Count active queue entries for position — no whereIn to avoid index
     final existing = await _col
         .where('facultyId', isEqualTo: facultyId)
-        .where('statusIndex', whereIn: [
-          ConsultationStatus.pending.index,
-          ConsultationStatus.inProgress.index,
-        ])
         .get();
-
-    final position = existing.docs.length + 1;
+    final activeCount = existing.docs.where((doc) {
+      final idx = doc.data()['statusIndex'] as int? ?? 0;
+      return idx == ConsultationStatus.pending.index ||
+             idx == ConsultationStatus.inProgress.index;
+    }).length;
+    final position = activeCount + 1;
     final id = _uuid.v4();
 
     await _col.doc(id).set({

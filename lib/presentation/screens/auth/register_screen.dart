@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/toast.dart';
 import '../../providers/auth_provider.dart';
 import '../../navigation/app_router.dart';
 
@@ -12,20 +13,18 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _formKey    = GlobalKey<FormState>();
-  final _nameCtrl   = TextEditingController();
-  final _emailCtrl  = TextEditingController();
-  final _codeCtrl   = TextEditingController();
-  final _phoneCtrl  = TextEditingController();
-  final _passCtrl   = TextEditingController();
-  final _confirmCtrl= TextEditingController();
+  final _formKey     = GlobalKey<FormState>();
+  final _nameCtrl    = TextEditingController();
+  final _emailCtrl   = TextEditingController();
+  final _codeCtrl    = TextEditingController();
+  final _phoneCtrl   = TextEditingController();
+  final _passCtrl    = TextEditingController();
+  final _confirmCtrl = TextEditingController();
 
   bool _obscure  = true;
   bool _obscureC = true;
-  bool _humanChecked = false; // simple captcha checkbox
+  bool _humanChecked = false;
   int? _selectedYear;
-
-  static const _years = [1, 2, 3, 4, 5];
 
   @override
   void dispose() {
@@ -38,17 +37,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     if (!_humanChecked) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please confirm you are not a robot'),
-        backgroundColor: Colors.orange,
-      ));
+      Toast.warning(context, 'Please confirm you are not a robot.');
       return;
     }
     await ref.read(authNotifierProvider.notifier).register(
       _nameCtrl.text.trim(),
       _emailCtrl.text.trim(),
       _passCtrl.text,
-      studentCode: _codeCtrl.text.trim(),
+      studentCode: _codeCtrl.text.trim().isEmpty ? null : _codeCtrl.text.trim(),
       phoneNumber: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
       yearOfStudy: _selectedYear,
     );
@@ -59,18 +55,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final auth = ref.watch(authNotifierProvider);
 
     ref.listen<AuthState>(authNotifierProvider, (_, next) {
-      if (next.emailVerificationSent) {
-        _showVerificationDialog();
-      }
+      if (next.user != null) context.go(AppRoutes.faculties);
       if (next.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(next.error!),
-          backgroundColor: AppColors.error,
-        ));
+        Toast.error(context, next.error!, title: 'Registration Failed');
         ref.read(authNotifierProvider.notifier).clearError();
       }
     });
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -97,29 +87,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             Form(
               key: _formKey,
               child: Column(children: [
-                // Full name
                 _tf(_nameCtrl, 'Full name', Icons.person_outline_rounded,
                     caps: TextCapitalization.words,
                     validator: (v) => (v == null || v.isEmpty) ? 'Enter your name' : null),
                 const SizedBox(height: 12),
-
-                // Email
                 _tf(_emailCtrl, 'Email address', Icons.alternate_email_rounded,
                     type: TextInputType.emailAddress,
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Enter your email';
-                      if (!RegExp(r'^[\w.]+@[\w.]+\.\w+$').hasMatch(v)) return 'Enter a valid email';
+                      if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
                       return null;
                     }),
                 const SizedBox(height: 12),
-
-                // Roll No
                 _tf(_codeCtrl, 'Roll No / Enrollment Number', Icons.badge_outlined,
                     validator: (v) => (v == null || v.trim().isEmpty)
                         ? 'Enter your Roll No / Enrollment Number' : null),
                 const SizedBox(height: 12),
-
-                // Phone number
                 _tf(_phoneCtrl, 'Phone Number', Icons.phone_outlined,
                     type: TextInputType.phone,
                     validator: (v) {
@@ -128,24 +111,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       return null;
                     }),
                 const SizedBox(height: 12),
-
-                // Year of study
                 DropdownButtonFormField<int>(
-                  value: _selectedYear,
+                  initialValue: _selectedYear,
                   decoration: const InputDecoration(
                     labelText: 'Year of Study',
                     prefixIcon: Icon(Icons.school_outlined, size: 18),
                   ),
-                  items: _years.map((y) => DropdownMenuItem(
-                    value: y,
-                    child: Text('Year $y'),
+                  items: [1, 2, 3, 4, 5].map((y) => DropdownMenuItem(
+                    value: y, child: Text('Year $y'),
                   )).toList(),
                   onChanged: (v) => setState(() => _selectedYear = v),
                   validator: (v) => v == null ? 'Select your year of study' : null,
                 ),
                 const SizedBox(height: 12),
-
-                // Password
                 TextFormField(
                   controller: _passCtrl,
                   obscureText: _obscure,
@@ -164,8 +142,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-
-                // Confirm password
                 TextFormField(
                   controller: _confirmCtrl,
                   obscureText: _obscureC,
@@ -184,7 +160,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
             const SizedBox(height: 16),
 
-            // ── Simple captcha checkbox ──────────────────────────────────
+            // Captcha checkbox
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -212,8 +188,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
 
             const SizedBox(height: 20),
-
-            // Create account button
             SizedBox(
               height: 50,
               child: ElevatedButton(
@@ -224,46 +198,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     : const Text('Create Account'),
               ),
             ),
-
             const SizedBox(height: 20),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('Already have an account? ', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+              const Text('Already have an account? ',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
               GestureDetector(
                 onTap: () => context.go(AppRoutes.login),
-                child: const Text('Sign in', style: TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w700)),
+                child: const Text('Sign in',
+                    style: TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w700)),
               ),
             ]),
             const SizedBox(height: 32),
           ]),
         ),
-      ),
-    );
-  }
-
-  void _showVerificationDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
-          Icon(Icons.mark_email_read_rounded, color: AppColors.primary),
-          SizedBox(width: 10),
-          Text('Verify your email'),
-        ]),
-        content: Text(
-          'A verification link has been sent to ${_emailCtrl.text.trim()}.\n\nPlease check your inbox and click the link to activate your account.',
-          style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.go(AppRoutes.login);
-            },
-            child: const Text('Go to Sign In'),
-          ),
-        ],
       ),
     );
   }

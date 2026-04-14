@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/toast.dart';
-import '../../../domain/entities/user.dart';
 import '../../providers/auth_provider.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -114,7 +113,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   caps: TextCapitalization.words),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
-                value: _selectedYear,
+                initialValue: _selectedYear,
                 decoration: const InputDecoration(
                   labelText: 'Year of Study',
                   prefixIcon: Icon(Icons.school_outlined, size: 18),
