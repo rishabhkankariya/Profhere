@@ -10,7 +10,6 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?logo=firebase)](https://firebase.google.com)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web-green)](https://profhere.web.app)
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue)](https://github.com)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 
 **Live Web App → [profhere.web.app](https://profhere.web.app)**
 
@@ -382,13 +381,6 @@ GitHub Actions workflows are included for Firebase Hosting:
 4. Push to the branch: `git push origin feature/your-feature`
 5. Open a Pull Request
 
----
-
-## License
-
-This project is released under the MIT License. See [LICENSE](LICENSE) for details.
-
----
 
 <div align="center">
 
