@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/toast.dart';
 import '../../../domain/entities/faculty.dart';
 import '../../../domain/entities/user.dart';
+import '../../../domain/entities/consultation.dart';
 import '../../providers/faculty_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/consultation_provider.dart';
@@ -13,7 +14,10 @@ import '../../providers/subscription_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
+import '../../widgets/skeleton_loader.dart';
 import '../profile/edit_profile_screen.dart';
+import '../todo/todo_screen.dart';
+import '../events/events_screen.dart';
 
 class FacultyListScreen extends ConsumerStatefulWidget {
   const FacultyListScreen({super.key});
@@ -51,6 +55,8 @@ class _FacultyListScreenState extends ConsumerState<FacultyListScreen> {
         backgroundColor: AppColors.background,
         body: IndexedStack(index: _navIndex, children: [
           _FacultyTab(onJoinQueue: _joinQueue),
+          const TodoScreen(),
+          const EventsScreen(),
           const _ProfileTab(),
         ]),
         bottomNavigationBar: _BottomNav(
@@ -66,58 +72,84 @@ class _FacultyListScreenState extends ConsumerState<FacultyListScreen> {
     showModalBottomSheet(
       context: ctx,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 24, right: 24, top: 24,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+      useSafeArea: true,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (_, ss) => Padding(
+          // This padding pushes the sheet up when keyboard appears
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Handle bar
+                Center(child: Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+                const SizedBox(height: 16),
+                // Faculty info header
+                Row(children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(12)),
+                    child: Center(child: Text(faculty.initials,
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary, fontSize: 15))),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(faculty.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary)),
+                    Text(faculty.department, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ])),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: faculty.status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text(faculty.status.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
+                  ),
+                ]),
+                const SizedBox(height: 20),
+                // Purpose field — autofocus so keyboard opens immediately
+                TextField(
+                  controller: purposeCtrl,
+                  autofocus: true,
+                  maxLines: 3,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Purpose of consultation',
+                    hintText: 'e.g. Project discussion, grade query…',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Confirm button — always visible above keyboard
+                ElevatedButton(
+                  onPressed: () async {
+                    if (purposeCtrl.text.trim().isEmpty) return;
+                    Navigator.pop(sheetCtx);
+                    final user = ref.read(authNotifierProvider).user;
+                    if (user == null) return;
+                    final result = await ref.read(consultationNotifierProvider.notifier).joinQueue(
+                      facultyId: faculty.id,
+                      studentId: user.id,
+                      studentName: user.name,
+                      purpose: purposeCtrl.text.trim(),
+                    );
+                    if (!ctx.mounted) return;
+                    if (result != null) {
+                      Toast.success(ctx, 'Joined queue — position #${result.position}, ~${result.waitTimeMinutes} min wait', title: 'Queue Joined');
+                    } else {
+                      final err = ref.read(consultationNotifierProvider).error;
+                      Toast.error(ctx, err?.toString().replaceAll('Exception: ', '') ?? 'Could not join queue', title: 'Queue Failed');
+                    }
+                  },
+                  child: const Text('Confirm & Join Queue'),
+                ),
+              ],
+            ),
+          ),
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(12)),
-              child: Center(child: Text(faculty.initials,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary, fontSize: 15))),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(faculty.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary)),
-              Text(faculty.department, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            ])),
-          ]),
-          const SizedBox(height: 20),
-          TextField(
-            controller: purposeCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Purpose of consultation',
-              hintText: 'e.g. Project discussion, grade query',
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () async {
-              if (purposeCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx);
-              final user = ref.read(authNotifierProvider).user;
-              if (user == null) return;
-              final result = await ref.read(consultationNotifierProvider.notifier).joinQueue(
-                facultyId: faculty.id,
-                studentId: user.id,
-                studentName: user.name,
-                purpose: purposeCtrl.text.trim(),
-              );
-              if (!ctx.mounted) return;
-              if (result != null) {
-                Toast.success(ctx, 'Joined queue — position #${result.position}, ~${result.waitTimeMinutes} min wait', title: 'Queue Joined');
-              } else {
-                final err = ref.read(consultationNotifierProvider).error;
-                Toast.error(ctx, err?.toString().replaceAll('Exception: ', '') ?? 'Could not join queue', title: 'Queue Failed');
-              }
-            },
-            child: const Text('Confirm & Join Queue'),
-          ),
-        ]),
       ),
     );
   }
@@ -140,6 +172,7 @@ class _FacultyTab extends ConsumerWidget {
     return CustomScrollView(
       slivers: [
         _buildAppBar(context, ref, prefs),
+        SliverToBoxAdapter(child: _HeroBanner()),
         SliverToBoxAdapter(child: _buildSearch(ref)),
         SliverToBoxAdapter(child: _buildDeptFilter(ref, departments, selectedDept)),
         facultiesAsync.when(
@@ -166,11 +199,11 @@ class _FacultyTab extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (ctx, i) => _FacultyCard(
+                  (ctx, i) => _FacultyCardWithQueueStatus(
                     faculty: sorted[i],
                     isSubscribed: subscribed.contains(sorted[i].id),
                     onTap: () => ctx.go('/faculty/${sorted[i].id}'),
-                    onQueue: sorted[i].isAvailable ? () => onJoinQueue(ctx, sorted[i]) : null,
+                    onJoinQueue: onJoinQueue,
                     onSubscribe: () => ref.read(subscriptionProvider.notifier).toggle(sorted[i].id),
                   ),
                   childCount: sorted.length,
@@ -178,8 +211,33 @@ class _FacultyTab extends ConsumerWidget {
               ),
             );
           },
-          loading: () => const SliverFillRemaining(child: Center(child: CircularProgressIndicator())),
-          error: (e, _) => SliverFillRemaining(child: Center(child: Text('$e'))),
+          loading: () => SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (_, i) => const SkeletonCard(height: 120),
+                childCount: 6,
+              ),
+            ),
+          ),
+          error: (e, _) => SliverFillRemaining(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: AppColors.textMuted.withValues(alpha: 0.5)),
+                  const SizedBox(height: 16),
+                  Text('Failed to load faculty', style: TextStyle(color: AppColors.textMuted)),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => ref.invalidate(facultyListProvider),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -198,6 +256,21 @@ class _FacultyTab extends ConsumerWidget {
         const Text('Find your faculty', style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w400)),
       ]),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary, size: 22),
+          tooltip: 'Refresh',
+          onPressed: () {
+            // Invalidate the faculty list provider to trigger a refresh
+            ref.invalidate(facultyListProvider);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Refreshing faculty list...'),
+                duration: Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        ),
         PopupMenuButton<FacultySort>(
           icon: const Icon(Icons.sort_rounded, color: AppColors.textSecondary, size: 22),
           onSelected: (s) => ref.read(userPrefsProvider.notifier).setSort(s),
@@ -269,6 +342,77 @@ class _FacultyTab extends ConsumerWidget {
   }
 }
 
+// ─── Hero Banner ──────────────────────────────────────────────────────────────
+
+class _HeroBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final screenW = MediaQuery.sizeOf(context).width;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            // Responsive image — fills width, fixed aspect ratio
+            AspectRatio(
+              aspectRatio: screenW > 600 ? 3.2 : 2.4,
+              child: Image.asset(
+                'assets/IT_Building2.jpg',
+                fit: BoxFit.cover,
+                width: double.infinity,
+              ),
+            ),
+            // Gradient overlay for text readability
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.08),
+                      Colors.black.withValues(alpha: 0.55),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Bottom text overlay
+            Positioned(
+              left: 16, right: 16, bottom: 14,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Find Your Faculty',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Check availability & join the queue instantly',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Chip extends StatelessWidget {
   final String label;
   final bool active;
@@ -294,14 +438,64 @@ class _Chip extends StatelessWidget {
   }
 }
 
+// ─── Faculty Card with Queue Status ──────────────────────────────────────────
+
+class _FacultyCardWithQueueStatus extends ConsumerWidget {
+  final Faculty faculty;
+  final bool isSubscribed;
+  final VoidCallback onTap;
+  final void Function(BuildContext, Faculty) onJoinQueue;
+  final VoidCallback onSubscribe;
+  
+  const _FacultyCardWithQueueStatus({
+    required this.faculty,
+    required this.isSubscribed,
+    required this.onTap,
+    required this.onJoinQueue,
+    required this.onSubscribe,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authNotifierProvider).user;
+    final queueAsync = ref.watch(consultationsByFacultyProvider(faculty.id));
+    
+    // Check if current student is already in queue for this faculty
+    final isInQueue = queueAsync.maybeWhen(
+      data: (list) => list.any((c) =>
+          c.studentId == (user?.id ?? '') &&
+          (c.status == ConsultationStatus.pending ||
+              c.status == ConsultationStatus.inProgress)),
+      orElse: () => false,
+    );
+
+    return _FacultyCard(
+      faculty: faculty,
+      isSubscribed: isSubscribed,
+      onTap: onTap,
+      onQueue: faculty.isAvailable && !isInQueue ? () => onJoinQueue(context, faculty) : null,
+      onSubscribe: onSubscribe,
+      isInQueue: isInQueue,
+    );
+  }
+}
+
 class _FacultyCard extends StatelessWidget {
   final Faculty faculty;
   final bool isSubscribed;
   final VoidCallback onTap;
   final VoidCallback? onQueue;
   final VoidCallback onSubscribe;
-  const _FacultyCard({required this.faculty, required this.isSubscribed,
-      required this.onTap, this.onQueue, required this.onSubscribe});
+  final bool isInQueue;
+  
+  const _FacultyCard({
+    required this.faculty,
+    required this.isSubscribed,
+    required this.onTap,
+    this.onQueue,
+    required this.onSubscribe,
+    this.isInQueue = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -386,20 +580,45 @@ class _FacultyCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onQueue != null) ...[
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 32,
-                  child: ElevatedButton(
-                    onPressed: onQueue,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                    ),
-                    child: const Text('Queue'),
-                  ),
-                ),
-              ],
+              // Queue button - show different states
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 32,
+                child: isInQueue
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.successBg,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.success),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
+                            SizedBox(width: 4),
+                            Text('In Queue', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.success)),
+                          ],
+                        ),
+                      )
+                    : onQueue != null
+                        ? ElevatedButton(
+                            onPressed: onQueue,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                            child: const Text('Queue'),
+                          )
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceElevated,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('Unavailable', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                          ),
+              ),
             ]),
           ]),
         ),
@@ -705,10 +924,28 @@ class _ProfileCard extends ConsumerWidget {
             const SizedBox(height: 3),
             Text(user?.email ?? '', style: const TextStyle(fontSize: 12, color: Colors.white70), overflow: TextOverflow.ellipsis),
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
-              child: Text(user?.role.label ?? '', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white))),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
+                child: Text(user?.role.label ?? '', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white))),
+              // Show CR badge if student is a Class Representative
+              if (user?.role == UserRole.student && (user?.isCR ?? false)) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.star_rounded, size: 11, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text('CR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ]),
+                ),
+              ],
+            ]),
           ])),
           // Edit profile button
           IconButton(
@@ -969,7 +1206,9 @@ class _BottomNav extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             _NavItem(icon: Icons.people_alt_outlined, activeIcon: Icons.people_alt_rounded, label: 'Faculty', active: current == 0, onTap: () => onTap(0)),
-            _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile', active: current == 1, onTap: () => onTap(1)),
+            _NavItem(icon: Icons.check_circle_outline_rounded, activeIcon: Icons.check_circle_rounded, label: 'Tasks', active: current == 1, onTap: () => onTap(1)),
+            _NavItem(icon: Icons.event_outlined, activeIcon: Icons.event_rounded, label: 'Events', active: current == 2, onTap: () => onTap(2)),
+            _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile', active: current == 3, onTap: () => onTap(3)),
           ]),
         ),
       ),

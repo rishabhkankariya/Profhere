@@ -12,7 +12,6 @@ import '../../providers/community_provider.dart';
 import '../../providers/prefs_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../../data/datasources/local/hive_service.dart';
-
 // ─── Persist rules acceptance ─────────────────────────────────────────────────
 bool _hasAcceptedRules() =>
     HiveService.settings.get('community_rules_accepted') == true;
@@ -148,6 +147,24 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
     final replyTo = ref.read(replyToProvider);
     final prefs   = ref.read(userPrefsProvider);
     if (user == null) return;
+
+    // Check if student is restricted or blocked
+    final restricted = ref.read(restrictedUserIdsProvider).value ?? [];
+    final blocked    = ref.read(blockedUserIdsProvider).value ?? [];
+    if (blocked.contains(user.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('You have been blocked from community chat.'),
+        backgroundColor: AppColors.error,
+      ));
+      return;
+    }
+    if (restricted.contains(user.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('You have been restricted from sending messages.'),
+        backgroundColor: AppColors.warning,
+      ));
+      return;
+    }
 
     _ctrl.clear();
     ref.read(replyToProvider.notifier).state = null;
@@ -440,10 +457,13 @@ class _MessageList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final msgsAsync = ref.watch(communityMessagesProvider);
+    final blocked   = ref.watch(blockedUserIdsProvider).value ?? [];
 
     return msgsAsync.when(
       data: (msgs) {
-        var visible = msgs.where((m) => m.status != MessageStatus.removed).toList();
+        var visible = msgs
+            .where((m) => m.status != MessageStatus.removed && !blocked.contains(m.senderId))
+            .toList();
         // Apply search filter
         if (searchQuery.isNotEmpty) {
           visible = visible.where((m) =>
@@ -674,22 +694,36 @@ class _MessageBubble extends ConsumerWidget {
                         runSpacing: 4,
                         children: msg.reactions.entries.map((e) {
                           final isMyReaction = e.value == currentUserId;
+                          final r = _kReactions.firstWhere(
+                            (r) => r.key == e.key,
+                            orElse: () => _kReactions.first,
+                          );
                           return GestureDetector(
                             onTap: () {
                               if (isMyReaction) {
-                                ref.read(communityNotifierProvider.notifier).removeReaction(msg.id, e.key);
+                                ref.read(communityNotifierProvider.notifier)
+                                    .removeReaction(msg.id, e.key);
+                              } else {
+                                ref.read(communityNotifierProvider.notifier)
+                                    .addReaction(msg.id, e.key, currentUserId);
                               }
                             },
-                            child: Container(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: isMyReaction ? AppColors.primaryLight : AppColors.surfaceElevated,
-                                borderRadius: BorderRadius.circular(12),
+                                color: isMyReaction
+                                    ? r.color.withValues(alpha: 0.12)
+                                    : AppColors.surfaceElevated,
+                                borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: isMyReaction ? AppColors.primary : AppColors.border,
+                                  color: isMyReaction ? r.color : AppColors.border,
+                                  width: isMyReaction ? 1.5 : 1,
                                 ),
                               ),
-                              child: Text(e.key, style: const TextStyle(fontSize: 16)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(r.icon, size: 13, color: isMyReaction ? r.color : AppColors.textMuted),
+                              ]),
                             ),
                           );
                         }).toList(),
@@ -705,7 +739,7 @@ class _MessageBubble extends ConsumerWidget {
                       ),
                       if (msg.isEdited) ...[
                         const SizedBox(width: 4),
-                        const Text('• edited', style: TextStyle(fontSize: 9, color: AppColors.textMuted, fontStyle: FontStyle.italic)),
+                        const Icon(Icons.edit_rounded, size: 9, color: AppColors.textMuted),
                       ],
                     ]),
                   ),
@@ -725,26 +759,18 @@ class _MessageBubble extends ConsumerWidget {
       builder: (_) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Emoji reactions
+          // Icon reactions
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-              '👍', '❤️', '😂', '😮', '😢', '🙏'
-            ].map((emoji) => GestureDetector(
-              onTap: () {
-                ref.read(communityNotifierProvider.notifier).addReaction(msg.id, emoji, currentUserId);
-                Navigator.pop(context);
-              },
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceElevated,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
-              ),
-            )).toList()),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: _kReactions.map((r) => GestureDetector(
+                onTap: () {
+                  ref.read(communityNotifierProvider.notifier).addReaction(msg.id, r.key, currentUserId);
+                  Navigator.pop(context);
+                },
+                child: _ReactionBtn(reaction: r),
+              )).toList(),
+            ),
           ),
           const Divider(height: 1),
           ListTile(
@@ -1089,5 +1115,41 @@ class _HighlightText extends StatelessWidget {
       start = idx + query.length;
     }
     return spans;
+  }
+}
+
+// ─── Reaction model ───────────────────────────────────────────────────────────
+
+class _Reaction {
+  final String key;
+  final IconData icon;
+  final Color color;
+  const _Reaction(this.key, this.icon, this.color);
+}
+
+const _kReactions = [
+  _Reaction('like',     Icons.thumb_up_rounded,        AppColors.primary),
+  _Reaction('love',     Icons.favorite_rounded,         AppColors.error),
+  _Reaction('insightful', Icons.lightbulb_rounded,      AppColors.warning),
+  _Reaction('support',  Icons.volunteer_activism_rounded, Color(0xFF7C3AED)),
+  _Reaction('curious',  Icons.help_rounded,             AppColors.info),
+  _Reaction('celebrate',Icons.celebration_rounded,      AppColors.success),
+];
+
+class _ReactionBtn extends StatelessWidget {
+  final _Reaction reaction;
+  const _ReactionBtn({required this.reaction});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44, height: 44,
+      decoration: BoxDecoration(
+        color: reaction.color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: reaction.color.withValues(alpha: 0.2)),
+      ),
+      child: Icon(reaction.icon, size: 20, color: reaction.color),
+    );
   }
 }

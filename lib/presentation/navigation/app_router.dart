@@ -7,24 +7,32 @@ import '../screens/splash_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
 import '../screens/auth/phone_auth_screen.dart';
+import '../screens/auth/force_change_password_screen.dart';
 import '../screens/faculty/faculty_list_screen.dart';
 import '../screens/faculty/faculty_detail_screen.dart';
 import '../screens/faculty/faculty_dashboard_screen.dart';
 import '../screens/admin/admin_dashboard_screen.dart';
 import '../screens/community/community_screen.dart';
+import '../screens/community/faculty_community_screen.dart';
 import '../screens/profile/edit_profile_screen.dart';
+import '../screens/todo/todo_screen.dart';
+import '../screens/events/events_screen.dart';
 
 class AppRoutes {
-  static const splash          = '/';
-  static const login           = '/login';
-  static const register        = '/register';
-  static const phoneAuth       = '/phone-auth';
-  static const faculties       = '/faculties';
-  static const facultyDetail   = '/faculty/:id';
-  static const facultyDashboard= '/faculty-dashboard';
-  static const admin           = '/admin';
-  static const community       = '/community';
-  static const editProfile     = '/edit-profile';
+  static const splash             = '/';
+  static const login              = '/login';
+  static const register           = '/register';
+  static const phoneAuth          = '/phone-auth';
+  static const forceChangePass    = '/force-change-password';
+  static const faculties          = '/faculties';
+  static const facultyDetail      = '/faculty/:id';
+  static const facultyDashboard   = '/faculty-dashboard';
+  static const admin              = '/admin';
+  static const community          = '/community';
+  static const facultyCommunity   = '/faculty-community';
+  static const editProfile        = '/edit-profile';
+  static const todo               = '/todo';
+  static const events             = '/events';
 }
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -45,7 +53,15 @@ String? _redirectForAuth(Ref ref, GoRouterState state) {
   final user = ref.read(authNotifierProvider).user;
   final loc  = state.matchedLocation;
   const publicRoutes = {AppRoutes.splash, AppRoutes.login, AppRoutes.register, AppRoutes.phoneAuth};
+
   if (!publicRoutes.contains(loc) && user == null) return AppRoutes.login;
+
+  // Faculty with mustChangePassword must go to force-change screen
+  if (user != null && user.mustChangePassword &&
+      loc != AppRoutes.forceChangePass) {
+    return AppRoutes.forceChangePass;
+  }
+
   if (user != null && (loc == AppRoutes.login || loc == AppRoutes.register)) {
     return _homeRouteForRole(user.role);
   }
@@ -58,7 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: AppRoutes.splash,
+    initialLocation: AppRoutes.login,
     refreshListenable: refresh,
     redirect: (context, state) => _redirectForAuth(ref, state),
     routes: [
@@ -66,12 +82,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.login,            builder: (_, __) => const LoginScreen()),
       GoRoute(path: AppRoutes.register,         builder: (_, __) => const RegisterScreen()),
       GoRoute(path: AppRoutes.phoneAuth,        builder: (_, __) => const PhoneAuthScreen()),
+      GoRoute(path: AppRoutes.forceChangePass,  builder: (_, __) => const ForceChangePasswordScreen()),
       GoRoute(path: AppRoutes.faculties,        builder: (_, __) => const FacultyListScreen()),
       GoRoute(path: AppRoutes.facultyDetail,    builder: (_, s)  => FacultyDetailScreen(facultyId: s.pathParameters['id']!)),
       GoRoute(path: AppRoutes.facultyDashboard, builder: (_, __) => const FacultyDashboardScreen()),
       GoRoute(path: AppRoutes.admin,            builder: (_, __) => const AdminDashboardScreen()),
       GoRoute(path: AppRoutes.community,        builder: (_, __) => const CommunityScreen()),
+      GoRoute(path: AppRoutes.facultyCommunity, builder: (_, __) => const FacultyCommunityScreen()),
       GoRoute(path: AppRoutes.editProfile,      builder: (_, __) => const EditProfileScreen()),
+      GoRoute(path: AppRoutes.todo,             builder: (_, __) => const TodoScreen()),
+      GoRoute(path: AppRoutes.events,           builder: (_, __) => const EventsScreen()),
     ],
   );
 });

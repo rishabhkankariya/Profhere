@@ -12,23 +12,33 @@ class RegisterScreen extends ConsumerStatefulWidget {
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey     = GlobalKey<FormState>();
   final _nameCtrl    = TextEditingController();
   final _emailCtrl   = TextEditingController();
-  final _codeCtrl    = TextEditingController();
-  final _phoneCtrl   = TextEditingController();
   final _passCtrl    = TextEditingController();
   final _confirmCtrl = TextEditingController();
-
   bool _obscure  = true;
   bool _obscureC = true;
-  bool _humanChecked = false;
-  int? _selectedYear;
+
+  late final AnimationController _anim;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..forward();
+    _fade  = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
+  }
 
   @override
   void dispose() {
-    for (final c in [_nameCtrl, _emailCtrl, _codeCtrl, _phoneCtrl, _passCtrl, _confirmCtrl]) {
+    _anim.dispose();
+    for (final c in [_nameCtrl, _emailCtrl, _passCtrl, _confirmCtrl]) {
       c.dispose();
     }
     super.dispose();
@@ -36,17 +46,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
-    if (!_humanChecked) {
-      Toast.warning(context, 'Please confirm you are not a robot.');
-      return;
-    }
     await ref.read(authNotifierProvider.notifier).register(
       _nameCtrl.text.trim(),
       _emailCtrl.text.trim(),
       _passCtrl.text,
-      studentCode: _codeCtrl.text.trim().isEmpty ? null : _codeCtrl.text.trim(),
-      phoneNumber: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-      yearOfStudy: _selectedYear,
     );
   }
 
@@ -61,10 +64,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ref.read(authNotifierProvider.notifier).clearError();
       }
     });
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
@@ -72,160 +76,168 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const SizedBox(height: 4),
-            const Text('Create account',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary, letterSpacing: -0.5)),
-            const SizedBox(height: 6),
-            const Text('Join ProfHere as a student',
-                style: TextStyle(fontSize: 15, color: AppColors.textMuted)),
-            const SizedBox(height: 28),
+        child: FadeTransition(
+          opacity: _fade,
+          child: SlideTransition(
+            position: _slide,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
 
-            Form(
-              key: _formKey,
-              child: Column(children: [
-                _tf(_nameCtrl, 'Full name', Icons.person_outline_rounded,
-                    caps: TextCapitalization.words,
-                    validator: (v) => (v == null || v.isEmpty) ? 'Enter your name' : null),
-                const SizedBox(height: 12),
-                _tf(_emailCtrl, 'Email address', Icons.alternate_email_rounded,
-                    type: TextInputType.emailAddress,
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Enter your email';
-                      if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
-                      return null;
-                    }),
-                const SizedBox(height: 12),
-                _tf(_codeCtrl, 'Roll No / Enrollment Number', Icons.badge_outlined,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Enter your Roll No / Enrollment Number' : null),
-                const SizedBox(height: 12),
-                _tf(_phoneCtrl, 'Phone Number', Icons.phone_outlined,
-                    type: TextInputType.phone,
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Enter your phone number';
-                      if (v.trim().length < 10) return 'Enter a valid phone number';
-                      return null;
-                    }),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: _selectedYear,
-                  decoration: const InputDecoration(
-                    labelText: 'Year of Study',
-                    prefixIcon: Icon(Icons.school_outlined, size: 18),
+                  // Header
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        blurRadius: 16, offset: const Offset(0, 6),
+                      )],
+                    ),
+                    child: const Icon(Icons.person_add_rounded, size: 26, color: Colors.white),
                   ),
-                  items: [1, 2, 3, 4, 5].map((y) => DropdownMenuItem(
-                    value: y, child: Text('Year $y'),
-                  )).toList(),
-                  onChanged: (v) => setState(() => _selectedYear = v),
-                  validator: (v) => v == null ? 'Select your year of study' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _passCtrl,
-                  obscureText: _obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
-                      onPressed: () => setState(() => _obscure = !_obscure),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Create account',
+                    style: TextStyle(
+                      fontSize: 26, fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary, letterSpacing: -0.5,
                     ),
                   ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Enter a password';
-                    if (v.length < 6) return 'Minimum 6 characters';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _confirmCtrl,
-                  obscureText: _obscureC,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm password',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscureC ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
-                      onPressed: () => setState(() => _obscureC = !_obscureC),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Join your campus community',
+                    style: TextStyle(fontSize: 15, color: AppColors.textMuted),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Form
+                  Form(
+                    key: _formKey,
+                    child: Column(children: [
+                      // Name
+                      TextFormField(
+                        controller: _nameCtrl,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Full name',
+                          hintText: 'Enter your full name',
+                          prefixIcon: Icon(Icons.person_outline_rounded, size: 18),
+                        ),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Enter your full name' : null,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Email
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Email address',
+                          hintText: 'Enter your email',
+                          prefixIcon: Icon(Icons.alternate_email_rounded, size: 18),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Enter your email';
+                          if (!v.contains('@') || !v.contains('.')) return 'Enter a valid email';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Password
+                      TextFormField(
+                        controller: _passCtrl,
+                        obscureText: _obscure,
+                        textInputAction: TextInputAction.next,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          hintText: 'Create a password',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                            ),
+                            onPressed: () => setState(() => _obscure = !_obscure),
+                          ),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Enter a password';
+                          if (v.length < 6) return 'Minimum 6 characters';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Confirm password
+                      TextFormField(
+                        controller: _confirmCtrl,
+                        obscureText: _obscureC,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _register(),
+                        decoration: InputDecoration(
+                          labelText: 'Confirm password',
+                          hintText: 'Re-enter your password',
+                          prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureC ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                            ),
+                            onPressed: () => setState(() => _obscureC = !_obscureC),
+                          ),
+                        ),
+                        validator: (v) => v != _passCtrl.text
+                            ? 'Passwords do not match' : null,
+                      ),
+                    ]),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Sign up button
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: auth.isLoading ? null : _register,
+                      child: auth.isLoading
+                          ? const SizedBox(
+                              width: 22, height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                          : const Text('Create Account', 
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     ),
                   ),
-                  validator: (v) => v != _passCtrl.text ? 'Passwords do not match' : null,
-                ),
-              ]),
-            ),
 
-            const SizedBox(height: 16),
-
-            // Captcha checkbox
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _humanChecked ? AppColors.success.withValues(alpha: 0.5) : AppColors.border,
-                ),
-              ),
-              child: Row(children: [
-                Checkbox(
-                  value: _humanChecked,
-                  activeColor: AppColors.success,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  onChanged: (v) => setState(() => _humanChecked = v ?? false),
-                ),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text('I am not a robot',
-                      style: TextStyle(fontSize: 14, color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
-                ),
-                Icon(Icons.security_rounded,
-                    color: _humanChecked ? AppColors.success : AppColors.textMuted, size: 20),
-              ]),
-            ),
-
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 50,
-              child: ElevatedButton(
-                onPressed: auth.isLoading ? null : _register,
-                child: auth.isLoading
-                    ? const SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Create Account'),
+                  const SizedBox(height: 24),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Text('Already have an account? ',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
+                    GestureDetector(
+                      onTap: () => context.go(AppRoutes.login),
+                      child: const Text('Sign in',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          )),
+                    ),
+                  ]),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('Already have an account? ',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
-              GestureDetector(
-                onTap: () => context.go(AppRoutes.login),
-                child: const Text('Sign in',
-                    style: TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w700)),
-              ),
-            ]),
-            const SizedBox(height: 32),
-          ]),
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _tf(TextEditingController ctrl, String label, IconData icon, {
-    TextInputType type = TextInputType.text,
-    TextCapitalization caps = TextCapitalization.none,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: ctrl,
-      keyboardType: type,
-      textCapitalization: caps,
-      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon, size: 18)),
-      validator: validator,
     );
   }
 }

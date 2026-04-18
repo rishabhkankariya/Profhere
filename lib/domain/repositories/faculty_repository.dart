@@ -10,6 +10,7 @@ abstract class FacultyRepository {
     String? activeContext,
     DateTime? expectedReturnAt,
     DateTime? manualOverrideUntil,
+    String? customStatusText,
   });
   Future<void> addFaculty(Faculty faculty);
   Future<void> updateFaculty(Faculty faculty);

@@ -30,6 +30,8 @@ class User extends Equatable {
   final int? yearOfStudy;
   final DateTime createdAt;
   final DateTime? lastLoginAt;
+  final bool mustChangePassword;
+  final bool isCR; // Class Representative — can post events
 
   const User({
     required this.id,
@@ -43,12 +45,14 @@ class User extends Equatable {
     this.yearOfStudy,
     required this.createdAt,
     this.lastLoginAt,
+    this.mustChangePassword = false,
+    this.isCR = false,
   });
 
   String get initials {
-    final parts = name.trim().split(' ').where((s) => s.isNotEmpty).toList();
+    final parts = name.split(' ');
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    return parts.isNotEmpty && parts[0].isNotEmpty ? parts[0][0].toUpperCase() : '?';
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 
   String get yearLabel => yearOfStudy != null ? 'Year $yearOfStudy' : '';
@@ -58,6 +62,7 @@ class User extends Equatable {
     UserRole? role, String? studentCode, String? department,
     String? phoneNumber, int? yearOfStudy,
     DateTime? createdAt, DateTime? lastLoginAt,
+    bool? mustChangePassword, bool? isCR,
   }) {
     return User(
       id: id ?? this.id,
@@ -71,10 +76,13 @@ class User extends Equatable {
       yearOfStudy: yearOfStudy ?? this.yearOfStudy,
       createdAt: createdAt ?? this.createdAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      isCR: isCR ?? this.isCR,
     );
   }
 
   @override
   List<Object?> get props => [id, name, email, avatarUrl, role, studentCode,
-      department, phoneNumber, yearOfStudy, createdAt, lastLoginAt];
+      department, phoneNumber, yearOfStudy, createdAt, lastLoginAt,
+      mustChangePassword, isCR];
 }

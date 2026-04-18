@@ -11,19 +11,21 @@ class FirestoreAuthRepository implements AuthRepository {
 
   // ── Map Firestore doc → domain User ──────────────────────────────────────
   User _fromDoc(DocumentSnapshot doc, fb.User fbUser) {
-    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+    final d = doc.data() as Map<String, dynamic>;
     return User(
       id: doc.id,
-      name: d['name']?.toString() ?? fbUser.displayName ?? 'User',
-      email: fbUser.email ?? d['email']?.toString() ?? '',
-      avatarUrl: d['avatarUrl']?.toString() ?? fbUser.photoURL,
-      role: UserRole.values[(d['roleIndex'] as num?)?.toInt() ?? 0],
-      studentCode: d['studentCode']?.toString(),
-      department: d['department']?.toString(),
-      phoneNumber: d['phoneNumber']?.toString(),
-      yearOfStudy: (d['yearOfStudy'] as num?)?.toInt(),
+      name: d['name'] as String? ?? fbUser.displayName ?? 'User',
+      email: fbUser.email ?? '',
+      avatarUrl: d['avatarUrl'] as String? ?? fbUser.photoURL,
+      role: UserRole.values[d['roleIndex'] as int? ?? 0],
+      studentCode: d['studentCode'] as String?,
+      department: d['department'] as String?,
+      phoneNumber: d['phoneNumber'] as String?,
+      yearOfStudy: d['yearOfStudy'] as int?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastLoginAt: (d['lastLoginAt'] as Timestamp?)?.toDate(),
+      mustChangePassword: d['mustChangePassword'] as bool? ?? false,
+      isCR: d['isCR'] as bool? ?? false,
     );
   }
 
@@ -55,10 +57,7 @@ class FirestoreAuthRepository implements AuthRepository {
     final fbUser = cred.user!;
     final doc = await _users.doc(fbUser.uid).get();
     if (!doc.exists) throw Exception('Account not found. Please contact admin.');
-    await _users.doc(fbUser.uid).update({
-      'lastLoginAt': FieldValue.serverTimestamp(),
-      'email': email.trim().toLowerCase(),
-    });
+    await _users.doc(fbUser.uid).update({'lastLoginAt': FieldValue.serverTimestamp()});
     final updatedDoc = await _users.doc(fbUser.uid).get();
     return _fromDoc(updatedDoc, fbUser);
   }
@@ -76,63 +75,98 @@ class FirestoreAuthRepository implements AuthRepository {
     final cred = await _auth.createUserWithEmailAndPassword(
         email: email.trim(), password: password);
     final fbUser = cred.user!;
-
-    // Update display name
     await fbUser.updateDisplayName(name);
 
-    // Save profile to Firestore
+    // Try to match with college database by email
+    String? matchedCode, matchedDept, matchedPhone;
+    int? matchedYear;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('college_students')
+          .where('email', isEqualTo: email.trim().toLowerCase())
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        final d = snap.docs.first.data();
+        matchedCode  = d['studentCode'] as String?;
+        matchedDept  = d['department'] as String?;
+        matchedPhone = d['phoneNumber'] as String?;
+        matchedYear  = (d['yearOfStudy'] as num?)?.toInt();
+      }
+    } catch (_) {}
+
     await _users.doc(fbUser.uid).set({
       'name': name,
-      'email': email.trim().toLowerCase(),
       'roleIndex': UserRole.student.index,
-      'studentCode': studentCode,
-      'department': null,
+      'studentCode': studentCode ?? matchedCode,
+      'department': matchedDept,
       'avatarUrl': null,
-      'phoneNumber': phoneNumber,
-      'yearOfStudy': yearOfStudy,
+      'phoneNumber': phoneNumber ?? matchedPhone,
+      'yearOfStudy': yearOfStudy ?? matchedYear,
+      'mustChangePassword': false,
       'createdAt': FieldValue.serverTimestamp(),
       'lastLoginAt': FieldValue.serverTimestamp(),
     });
 
-    // Return user directly — no email verification required
     final doc = await _users.doc(fbUser.uid).get();
     return _fromDoc(doc, fbUser);
   }
 
   // ── Google Sign-In ────────────────────────────────────────────────────────
   Future<User?> signInWithGoogle() async {
-    final googleUser = await _google.signIn();
-    if (googleUser == null) return null; // user cancelled
+    late fb.UserCredential cred;
 
-    final googleAuth = await googleUser.authentication;
-    final credential = fb.GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
+    try {
+      // Use Firebase's built-in Google provider — works on web via popup,
+      // and on mobile via redirect/native flow.
+      final provider = fb.GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+      cred = await _auth.signInWithPopup(provider);
+    } on fb.FirebaseAuthException catch (e) {
+      // popup-closed-by-user or cancelled — not an error
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') return null;
+      // On mobile signInWithPopup isn't supported — fall back to google_sign_in
+      final googleUser = await _google.signIn();
+      if (googleUser == null) return null;
+      final googleAuth = await googleUser.authentication;
+      final credential = fb.GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      cred = await _auth.signInWithCredential(credential);
+    } catch (_) {
+      // Any other error — try mobile fallback
+      final googleUser = await _google.signIn();
+      if (googleUser == null) return null;
+      final googleAuth = await googleUser.authentication;
+      final credential = fb.GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      cred = await _auth.signInWithCredential(credential);
+    }
 
-    final cred = await _auth.signInWithCredential(credential);
     final fbUser = cred.user!;
 
     // Create Firestore profile if first time
     final doc = await _users.doc(fbUser.uid).get();
     if (!doc.exists) {
       await _users.doc(fbUser.uid).set({
-        'name': fbUser.displayName ?? googleUser.displayName ?? 'User',
-        'email': fbUser.email!.toLowerCase(),
+        'name': fbUser.displayName ?? 'User',
         'roleIndex': UserRole.student.index,
         'studentCode': null,
         'department': null,
         'avatarUrl': fbUser.photoURL,
         'phoneNumber': fbUser.phoneNumber,
         'yearOfStudy': null,
+        'isCR': false,
         'createdAt': FieldValue.serverTimestamp(),
         'lastLoginAt': FieldValue.serverTimestamp(),
       });
     } else {
-      await _users.doc(fbUser.uid).update({
-        'lastLoginAt': FieldValue.serverTimestamp(),
-        'email': fbUser.email!.toLowerCase(),
-      });
+      await _users.doc(fbUser.uid).update({'lastLoginAt': FieldValue.serverTimestamp()});
     }
 
     final updatedDoc = await _users.doc(fbUser.uid).get();
@@ -178,7 +212,6 @@ class FirestoreAuthRepository implements AuthRepository {
     if (!doc.exists) {
       await _users.doc(fbUser.uid).set({
         'name': fbUser.displayName ?? 'User',
-        'email': fbUser.email?.toLowerCase(),
         'roleIndex': UserRole.student.index,
         'studentCode': null,
         'department': null,
@@ -189,10 +222,7 @@ class FirestoreAuthRepository implements AuthRepository {
         'lastLoginAt': FieldValue.serverTimestamp(),
       });
     } else {
-      await _users.doc(fbUser.uid).update({
-        'lastLoginAt': FieldValue.serverTimestamp(),
-        if (fbUser.email != null) 'email': fbUser.email!.toLowerCase(),
-      });
+      await _users.doc(fbUser.uid).update({'lastLoginAt': FieldValue.serverTimestamp()});
     }
 
     final updatedDoc = await _users.doc(fbUser.uid).get();
@@ -200,44 +230,82 @@ class FirestoreAuthRepository implements AuthRepository {
   }
 
   // ── Update profile ────────────────────────────────────────────────────────
-  /// Creates a Firebase Auth account for a faculty member and links it to
-  /// their existing Firestore profile (matched by email).
-  Future<void> createFacultyAccount({
+  /// Creates a Firebase Auth account for a faculty member with an auto-generated
+  /// demo password (FirstName + 4-digit random), saves it to Firestore, and
+  /// sends a password-reset email so the faculty can set their own password.
+  /// Returns the generated demo password so admin can share it if needed.
+  Future<String> createFacultyAccountWithDemoPassword({
     required String email,
-    required String password,
+    required String name,
     required String facultyFirestoreId,
   }) async {
+    // Generate demo password: first word of name + 4 random digits
+    final firstName = name.split(' ').first;
+    final digits = (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
+    final demoPassword = '$firstName@$digits';
+
     // Create Firebase Auth account
     final cred = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(), password: password);
+        email: email.trim(), password: demoPassword);
     final uid = cred.user!.uid;
 
-    // Copy Firestore data from faculty doc to users collection under new UID
+    // Copy Firestore data from faculty doc to users collection
     final facultyDoc = await FirebaseFirestore.instance
         .collection('faculty').doc(facultyFirestoreId).get();
     final d = facultyDoc.data() ?? {};
 
     await _users.doc(uid).set({
-      'name': d['name'] ?? email,
-      'email': email.trim().toLowerCase(),
+      'name': d['name'] ?? name,
       'roleIndex': UserRole.faculty.index,
       'studentCode': null,
       'department': d['department'],
       'avatarUrl': d['avatarUrl'],
       'phoneNumber': null,
       'yearOfStudy': null,
+      'mustChangePassword': true, // flag to force password change on first login
       'createdAt': FieldValue.serverTimestamp(),
       'lastLoginAt': FieldValue.serverTimestamp(),
     });
 
-    // Sign back in as admin (creating account signs in as the new user)
-    // We can't re-sign as admin here — just sign out the new account
+    // Send password reset email so faculty can set their own password
+    await _auth.sendPasswordResetEmail(email: email.trim());
+
+    // Sign out the newly created account so admin stays logged in
     await _auth.signOut();
+
+    return demoPassword;
   }
 
   /// Sends a password reset email to a faculty member.
   Future<void> sendFacultyPasswordReset(String email) async {
     await _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  /// Legacy manual password set — kept for admin who wants to set a specific password.
+  Future<void> createFacultyAccount({
+    required String email,
+    required String password,
+    required String facultyFirestoreId,
+  }) async {
+    final cred = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(), password: password);
+    final uid = cred.user!.uid;
+    final facultyDoc = await FirebaseFirestore.instance
+        .collection('faculty').doc(facultyFirestoreId).get();
+    final d = facultyDoc.data() ?? {};
+    await _users.doc(uid).set({
+      'name': d['name'] ?? email,
+      'roleIndex': UserRole.faculty.index,
+      'studentCode': null,
+      'department': d['department'],
+      'avatarUrl': d['avatarUrl'],
+      'phoneNumber': null,
+      'yearOfStudy': null,
+      'mustChangePassword': false,
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    });
+    await _auth.signOut();
   }
 
   /// Changes the current user's own password.

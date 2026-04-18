@@ -13,23 +13,25 @@ class FirestoreCommunityRepository {
   final _col = FirebaseFirestore.instance.collection('community');
 
   CommunityMessage _fromDoc(DocumentSnapshot doc) {
-    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+    final d = doc.data() as Map<String, dynamic>;
     return CommunityMessage(
       id: doc.id,
-      senderId: d['senderId']?.toString() ?? '',
-      senderName: d['senderName']?.toString() ?? 'Anonymous',
-      senderRole: d['senderRole']?.toString() ?? 'Student',
-      text: d['text']?.toString() ?? '',
+      senderId: d['senderId'] as String? ?? '',
+      senderName: d['senderName'] as String? ?? '',
+      senderRole: d['senderRole'] as String? ?? '',
+      text: d['text'] as String? ?? '',
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      status: MessageStatus.values[(d['status'] as num?)?.toInt() ?? 0],
+      status: MessageStatus.values[d['status'] as int? ?? 0],
       isAnonymous: d['isAnonymous'] as bool? ?? false,
-      senderAvatar: d['senderAvatar']?.toString(),
-      replyToId: d['replyToId']?.toString(),
-      replyToText: d['replyToText']?.toString(),
-      replyToSender: d['replyToSender']?.toString(),
+      senderAvatar: d['senderAvatar'] as String?,
+      replyToId: d['replyToId'] as String?,
+      replyToText: d['replyToText'] as String?,
+      replyToSender: d['replyToSender'] as String?,
       isPinned: d['isPinned'] as bool? ?? false,
       editedAt: (d['editedAt'] as Timestamp?)?.toDate(),
-      reactions: (d['reactions'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())) ?? {},
+      reactions: d['reactions'] != null
+          ? Map<String, String>.from(d['reactions'] as Map)
+          : {},
     );
   }
 
@@ -40,9 +42,12 @@ class FirestoreCommunityRepository {
 
   Stream<List<CommunityMessage>> watch() {
     return _col
-        .orderBy('createdAt')
         .snapshots()
-        .map((s) => s.docs.map(_fromDoc).toList());
+        .map((s) {
+          final list = s.docs.map(_fromDoc).toList();
+          list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          return list;
+        });
   }
 
   Future<CommunityMessage> sendMessage({
@@ -93,7 +98,7 @@ class FirestoreCommunityRepository {
 
   Future<void> togglePin(String id) async {
     final doc = await _col.doc(id).get();
-    final current = Map<String, dynamic>.from(doc.data() as Map? ?? {})['isPinned'] as bool? ?? false;
+    final current = (doc.data() as Map<String, dynamic>)['isPinned'] as bool? ?? false;
     await _col.doc(id).update({'isPinned': !current});
   }
 
@@ -105,5 +110,62 @@ class FirestoreCommunityRepository {
     await _col.doc(messageId).update({
       'reactions.$emoji': FieldValue.delete(),
     });
+  }
+
+  // ── Faculty moderation ────────────────────────────────────────────────────
+
+  /// Permanently delete a message document (faculty/admin only)
+  Future<void> deleteMessage(String id) async {
+    await _col.doc(id).delete();
+  }
+
+  /// Block a user — stores blocked userId in a separate collection
+  Future<void> blockUser(String blockedUserId, String blockedByFacultyId) async {
+    await FirebaseFirestore.instance
+        .collection('community_blocks')
+        .doc(blockedUserId)
+        .set({
+      'blockedBy': blockedByFacultyId,
+      'blockedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> unblockUser(String userId) async {
+    await FirebaseFirestore.instance
+        .collection('community_blocks')
+        .doc(userId)
+        .delete();
+  }
+
+  Stream<List<String>> watchBlockedUserIds() {
+    return FirebaseFirestore.instance
+        .collection('community_blocks')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.id).toList());
+  }
+
+  /// Restrict a user — they can still read but cannot send messages
+  Future<void> restrictUser(String restrictedUserId, String restrictedByFacultyId) async {
+    await FirebaseFirestore.instance
+        .collection('community_restrictions')
+        .doc(restrictedUserId)
+        .set({
+      'restrictedBy': restrictedByFacultyId,
+      'restrictedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> unrestrictUser(String userId) async {
+    await FirebaseFirestore.instance
+        .collection('community_restrictions')
+        .doc(userId)
+        .delete();
+  }
+
+  Stream<List<String>> watchRestrictedUserIds() {
+    return FirebaseFirestore.instance
+        .collection('community_restrictions')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.id).toList());
   }
 }

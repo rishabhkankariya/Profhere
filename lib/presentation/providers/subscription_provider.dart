@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/local/hive_service.dart';
+import '../../core/services/audio_service.dart';
 import 'auth_provider.dart';
 
 /// Persists subscribed faculty IDs per user in the settings box.
@@ -18,10 +19,13 @@ class SubscriptionNotifier extends StateNotifier<Set<String>> {
 
   Future<void> toggle(String facultyId) async {
     final next = Set<String>.from(state);
-    if (next.contains(facultyId)) {
+    final wasSubscribed = next.contains(facultyId);
+    if (wasSubscribed) {
       next.remove(facultyId);
+      AudioService.play(AppSound.unsubscribe);
     } else {
       next.add(facultyId);
+      AudioService.play(AppSound.subscribe);
     }
     state = next;
     await HiveService.settings.put('subs_$_userId', next.toList());

@@ -60,11 +60,12 @@ class WidgetService {
   }
 
   /// Called after a status change — updates widget without full re-login.
-  static Future<void> updateStatus(FacultyStatus status) async {
+  static Future<void> updateStatus(FacultyStatus status, {String? customStatusText}) async {
     if (kIsWeb) return;
-    
     try {
-      await _write(_keyStatus,      status.label);
+      await _write(_keyStatus,      status == FacultyStatus.custom && customStatusText != null
+          ? customStatusText
+          : status.label);
       await _write(_keyStatusColor, _colorHex(status));
       await _refresh();
     } catch (e) {
@@ -116,6 +117,8 @@ class WidgetService {
       case FacultyStatus.meeting:      return '#7C3AED';
       case FacultyStatus.away:         return '#6B7280';
       case FacultyStatus.notAvailable: return '#374151';
+      case FacultyStatus.onHoliday:    return '#0891B2';
+      case FacultyStatus.custom:       return '#7C3AED';
     }
   }
 
@@ -125,12 +128,15 @@ class WidgetService {
   static FacultyStatus? statusFromUri(Uri uri) {
     final value = uri.queryParameters['value'];
     switch (value) {
-      case 'available':  return FacultyStatus.available;
-      case 'busy':       return FacultyStatus.busy;
-      case 'inLecture':  return FacultyStatus.inLecture;
-      case 'meeting':    return FacultyStatus.meeting;
-      case 'away':       return FacultyStatus.away;
-      default:           return null;
+      case 'available':    return FacultyStatus.available;
+      case 'busy':         return FacultyStatus.busy;
+      case 'inLecture':    return FacultyStatus.inLecture;
+      case 'meeting':      return FacultyStatus.meeting;
+      case 'away':         return FacultyStatus.away;
+      case 'notAvailable': return FacultyStatus.notAvailable;
+      case 'onHoliday':    return FacultyStatus.onHoliday;
+      case 'custom':       return FacultyStatus.custom;
+      default:             return null;
     }
   }
 }

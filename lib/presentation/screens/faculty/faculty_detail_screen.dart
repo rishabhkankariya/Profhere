@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../domain/entities/faculty.dart';
 import '../../../domain/entities/consultation.dart';
@@ -113,6 +115,21 @@ class _DetailView extends ConsumerWidget {
           }
         },
       ),
+      actions: [
+        IconButton(
+          icon: Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.qr_code_rounded, size: 18, color: AppColors.primary),
+          ),
+          tooltip: 'Share QR Code',
+          onPressed: () => _showQRCode(context),
+        ),
+        const SizedBox(width: 8),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           color: AppColors.surface,
@@ -133,6 +150,108 @@ class _DetailView extends ConsumerWidget {
                   style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showQRCode(BuildContext context) {
+    final qrData = 'https://profhere.web.app/#/faculty/${faculty.id}';
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).padding.bottom + 24),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Handle
+            Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+
+            // Title
+            Text('${faculty.name}\'s QR Code',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 4),
+            const Text('Scan to open this faculty\'s profile',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+
+            // QR Code
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: QrImageView(
+                  data: qrData,
+                  version: QrVersions.auto,
+                  size: 200,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: Color(0xFF4F46E5),
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Color(0xFF1E1B4B),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Faculty info below QR
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              FacultyAvatar(
+                avatarBase64: faculty.avatarUrl,
+                initials: faculty.initials,
+                size: 32,
+                borderRadius: 10,
+              ),
+              const SizedBox(width: 10),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(faculty.name,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                Text(faculty.department,
+                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+              ]),
+            ]),
+            const SizedBox(height: 20),
+
+            // Copy link button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: qrData));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Profile link copied to clipboard'),
+                    backgroundColor: AppColors.success,
+                  ));
+                },
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('Copy Profile Link'),
+              ),
+            ),
+          ]),
         ),
       ),
     );
@@ -199,8 +318,28 @@ class _DetailView extends ConsumerWidget {
         border: Border.all(color: AppColors.border),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Information',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        Row(children: [
+          const Text('Information',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Spacer(),
+          // QR share button — always visible, works on web & mobile
+          Builder(builder: (ctx) => GestureDetector(
+            onTap: () => _showQRCode(ctx),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.qr_code_rounded, size: 14, color: AppColors.primary),
+                SizedBox(width: 5),
+                Text('Share QR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              ]),
+            ),
+          )),
+        ]),
         const SizedBox(height: 14),
         _InfoRow(icon: Icons.email_outlined, label: 'Email', value: faculty.email),
         _InfoRow(icon: Icons.location_on_outlined, label: 'Office',
@@ -227,12 +366,20 @@ class _DetailView extends ConsumerWidget {
       // Queue button
       Expanded(
         child: alreadyInQueue
-            ? OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.check_circle_outline_rounded, size: 16, color: AppColors.success),
-                label: const Text('In Queue', style: TextStyle(color: AppColors.success)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: AppColors.success),
+            ? Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.successBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.success),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+                    SizedBox(width: 8),
+                    Text('Already in Queue', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               )
             : ElevatedButton.icon(
@@ -267,60 +414,72 @@ class _DetailView extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(
-          left: 24, right: 24, top: 24,
-          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
-              child: Center(child: Text(faculty.initials,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary, fontSize: 14))),
+        // Pushes sheet above keyboard — no scrolling needed
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 16),
+            Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
+                child: Center(child: Text(faculty.initials,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary, fontSize: 14))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(faculty.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary)),
+                Text(faculty.department, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: faculty.status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                child: Text(faculty.status.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
+              ),
+            ]),
+            const SizedBox(height: 20),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Purpose of consultation',
+                hintText: 'e.g. Project discussion, grade query…',
+                alignLabelWithHint: true,
+              ),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(faculty.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.textPrimary)),
-              Text(faculty.department,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            ])),
-          ]),
-          const SizedBox(height: 20),
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Purpose of consultation',
-              hintText: 'e.g. Project discussion, grade query…',
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () async {
-              if (ctrl.text.trim().isEmpty) return;
-              Navigator.pop(sheetCtx);
-              final user = ref.read(authNotifierProvider).user;
-              if (user == null) return;
-              final result = await ref.read(consultationNotifierProvider.notifier).joinQueue(
-                facultyId: faculty.id,
-                studentId: user.id,
-                studentName: user.name,
-                purpose: ctrl.text.trim(),
-              );
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(result != null
-                    ? '✓ Joined queue — position #${result.position}, ~${result.waitTimeMinutes} min wait'
-                    : ref.read(consultationNotifierProvider).error?.toString() ?? 'Could not join queue'),
-                backgroundColor: result != null ? AppColors.success : AppColors.error,
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () async {
+                if (ctrl.text.trim().isEmpty) return;
+                Navigator.pop(sheetCtx);
+                final user = ref.read(authNotifierProvider).user;
+                if (user == null) return;
+                final result = await ref.read(consultationNotifierProvider.notifier).joinQueue(
+                  facultyId: faculty.id,
+                  studentId: user.id,
+                  studentName: user.name,
+                  purpose: ctrl.text.trim(),
+                );
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(result != null
+                      ? 'Joined queue — position #${result.position}, ~${result.waitTimeMinutes} min wait'
+                      : ref.read(consultationNotifierProvider).error?.toString() ?? 'Could not join queue'),
+                  backgroundColor: result != null ? AppColors.success : AppColors.error,
               ));
             },
             child: const Text('Confirm & Join Queue'),
           ),
         ]),
+        ),
       ),
     );
   }

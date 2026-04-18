@@ -2,7 +2,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:home_widget/home_widget.dart';
 import 'package:profhere/core/services/notification_service.dart';
 import 'package:profhere/core/services/widget_service.dart';
 import 'package:profhere/core/theme/app_theme.dart';
@@ -17,14 +16,23 @@ import 'package:profhere/presentation/providers/faculty_provider.dart';
 import 'package:profhere/presentation/providers/prefs_provider.dart';
 import 'package:profhere/presentation/providers/subscription_provider.dart';
 import 'package:profhere/presentation/screens/onboarding/permission_screen.dart';
+import 'package:profhere/presentation/screens/splash_screen.dart';
+
+// home_widget is Android/iOS only — import conditionally
+import 'package:home_widget/home_widget.dart'
+    if (dart.library.html) 'package:profhere/core/stubs/home_widget_stub.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   // Hive kept only for local settings (widget prefs, subscriptions, user prefs)
   await HiveService.initSettingsOnly();
-  await WidgetService.init();
-  await NotificationService.init();
+  if (!kIsWeb) {
+    await WidgetService.init();
+    await NotificationService.init();
+  }
   // Seed initial Firestore data if empty (runs once)
   await MockDataSeeder.seedIfEmpty();
   runApp(const ProviderScope(child: ProfHereApp()));
@@ -39,6 +47,8 @@ class ProfHereApp extends ConsumerStatefulWidget {
 class _ProfHereAppState extends ConsumerState<ProfHereApp>
     with WidgetsBindingObserver {
   bool _permissionsDone = false;
+  bool _splashDone = false;
+  bool _initializationComplete = false;
 
   // Track previous faculty statuses to detect changes for notifications
   final Map<String, FacultyStatus> _prevStatuses = {};
@@ -47,8 +57,32 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    HomeWidget.widgetClicked.listen(_handleWidgetTap);
-    _checkFirstLaunch();
+    if (!kIsWeb) {
+      HomeWidget.widgetClicked.listen(_handleWidgetTap);
+    }
+    // Initialize app: show native splash, then check permissions
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Small delay to let Flutter engine warm up
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (mounted) {
+      setState(() => _splashDone = true);
+    }
+    // The SplashScreen widget itself handles the 2.6s animation timing
+    // and calls _onSplashComplete when done
+  }
+
+  void _onSplashComplete() {
+    // Check if permissions have already been asked
+    final permissionsAsked = HiveService.settings.get('permissions_asked') as bool? ?? false;
+    if (mounted) {
+      setState(() {
+        _permissionsDone = kIsWeb || permissionsAsked;
+        _initializationComplete = true;
+      });
+    }
   }
 
   @override
@@ -85,15 +119,6 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
     if (faculty.status != widgetStatus) {
       await ref.read(facultyNotifierProvider.notifier).updateStatus(faculty.id, widgetStatus);
     }
-  }
-
-  Future<void> _checkFirstLaunch() async {
-    if (kIsWeb) {
-      setState(() => _permissionsDone = true);
-      return;
-    }
-    final alreadyAsked = HiveService.settings.get('permissions_asked') as bool? ?? false;
-    if (alreadyAsked) setState(() => _permissionsDone = true);
   }
 
   Future<void> _onPermissionsDone() async {
@@ -168,25 +193,13 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
 
       next.whenData((list) async {
         // 1. Keep widget in sync for faculty users — match by email
-        // Only update widget if status actually changed (avoid unnecessary writes)
         if (user?.role.name == 'faculty' && user?.email != null) {
           Faculty? me;
           try {
             me = list.firstWhere(
                 (f) => f.email.toLowerCase() == user!.email.toLowerCase());
           } catch (_) {}
-          if (me != null) {
-            final prevList = prev?.value;
-            Faculty? prevMe;
-            try {
-              prevMe = prevList?.firstWhere(
-                  (f) => f.email.toLowerCase() == user!.email.toLowerCase());
-            } catch (_) {}
-            // Only call WidgetService if status actually changed
-            if (prevMe == null || prevMe.status != me.status) {
-              await WidgetService.updateStatus(me.status);
-            }
-          }
+          if (me != null) await WidgetService.updateStatus(me.status);
         }
 
         // 2. Subscription notifications for student users
@@ -219,9 +232,17 @@ class _ProfHereAppState extends ConsumerState<ProfHereApp>
       theme: AppTheme.lightTheme,
       routerConfig: router,
       builder: (context, child) {
+        // Show the animated splash screen while initializing
+        if (!_splashDone || !_initializationComplete) {
+          return SplashScreen(onComplete: _onSplashComplete);
+        }
+
+        // Show permission screen if permissions haven't been asked
         if (!_permissionsDone) {
           return PermissionScreen(onDone: _onPermissionsDone);
         }
+
+        // Show the main app
         return child ?? const SizedBox.shrink();
       },
     );

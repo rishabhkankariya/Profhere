@@ -7,7 +7,7 @@ class FirestoreTimetableRepository {
   final _col = FirebaseFirestore.instance.collection('timetable');
 
   TimetableEntry _fromDoc(DocumentSnapshot doc) {
-    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+    final d = doc.data() as Map<String, dynamic>;
     return TimetableEntry(
       id: doc.id,
       subjectId: d['subjectId'] as String? ?? '',
@@ -21,16 +21,28 @@ class FirestoreTimetableRepository {
   }
 
   Future<List<TimetableEntry>> getByFaculty(String facultyId) async {
-    final snap = await _col
-        .where('facultyId', isEqualTo: facultyId)
-        .get();
+    final snap = await _col.where('facultyId', isEqualTo: facultyId).get();
     final list = snap.docs.map(_fromDoc).toList();
     list.sort((a, b) {
-      final dayComp = a.dayOfWeek.compareTo(b.dayOfWeek);
-      if (dayComp != 0) return dayComp;
-      return a.startTime.compareTo(b.startTime);
+      final d = a.dayOfWeek.compareTo(b.dayOfWeek);
+      return d != 0 ? d : a.startTime.compareTo(b.startTime);
     });
     return list;
+  }
+
+  Stream<List<TimetableEntry>> watchByFaculty(String facultyId) {
+    return _col
+        .where('facultyId', isEqualTo: facultyId)
+        .snapshots()
+        .handleError((_) {})
+        .map((snap) {
+      final list = snap.docs.map(_fromDoc).toList();
+      list.sort((a, b) {
+        final d = a.dayOfWeek.compareTo(b.dayOfWeek);
+        return d != 0 ? d : a.startTime.compareTo(b.startTime);
+      });
+      return list;
+    });
   }
 
   Future<void> addEntry(TimetableEntry entry) async {

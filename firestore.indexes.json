@@ -4,14 +4,8 @@
       "collectionGroup": "community_chats",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "channel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
     }
   ]

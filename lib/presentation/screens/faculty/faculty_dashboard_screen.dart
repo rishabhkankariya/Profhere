@@ -5,14 +5,17 @@ import '../../../core/constants/app_colors.dart';
 import '../../../domain/entities/faculty.dart';
 import '../../../domain/entities/consultation.dart';
 import '../../../domain/entities/academic.dart';
+import '../../../domain/entities/user.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/faculty_provider.dart';
 import '../../providers/academic_provider.dart';
 import '../../providers/consultation_provider.dart';
 import '../../providers/avatar_provider.dart';
+import '../../providers/admin_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
 import '../../../core/services/widget_service.dart';
+import '../community/faculty_community_screen.dart';
 
 class FacultyDashboardScreen extends ConsumerStatefulWidget {
   const FacultyDashboardScreen({super.key});
@@ -22,7 +25,9 @@ class FacultyDashboardScreen extends ConsumerStatefulWidget {
 
 class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
   int _tab = 0;
-  String? _facultyId; // resolved once, never reset
+  // Resolved once in initState — never reset to null on rebuilds.
+  // After this is set, we stream the doc directly by ID.
+  String? _facultyId;
 
   @override
   void initState() {
@@ -30,8 +35,6 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
     _resolveFacultyId();
   }
 
-  /// Resolve the Firestore doc ID once at startup and store it.
-  /// After this, we stream the doc directly by ID — no email lookups on rebuild.
   Future<void> _resolveFacultyId() async {
     final user = ref.read(authNotifierProvider).user;
     if (user?.email == null) return;
@@ -48,9 +51,8 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
   Widget build(BuildContext context) {
     final user = ref.watch(authNotifierProvider).user;
 
-    // Once we have the facultyId, stream that specific doc directly.
-    // facultyByIdStreamProvider watches a single Firestore document —
-    // it never restarts due to auth changes, never yields null on rebuild.
+    // Stream the single faculty doc by ID — stable, never restarts.
+    // facultyByIdStreamProvider watches _col.doc(id).snapshots() directly.
     final facultyAsync = _facultyId != null
         ? ref.watch(facultyByIdStreamProvider(_facultyId!))
         : const AsyncValue<Faculty?>.data(null);
@@ -63,9 +65,27 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Hello, ${user?.name.split(' ').first ?? 'Faculty'} 👋',
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const Text('Faculty Dashboard', style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w400)),
+          const Text('Faculty Dashboard',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w400)),
         ]),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            tooltip: 'Refresh',
+            onPressed: () {
+              if (_facultyId != null) {
+                ref.invalidate(facultyByIdStreamProvider(_facultyId!));
+                ref.invalidate(consultationsByFacultyProvider(_facultyId!));
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Refreshing...'),
+                  duration: Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded, size: 20),
             onPressed: () async {
@@ -79,17 +99,20 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(children: [
               _buildTabBar(),
-              Expanded(child: IndexedStack(index: _tab, children: [
-                _OverviewTab(faculty: faculty, facultyId: _facultyId),
-                _QueueTab(facultyId: _facultyId),
-                _ScheduleTab(facultyId: _facultyId),
-              ])),
+              Expanded(child: _tab == 4
+                  ? const FacultyCommunityScreen(isEmbedded: true)
+                  : IndexedStack(index: _tab, children: [
+                      _OverviewTab(faculty: faculty, facultyId: _facultyId!),
+                      _QueueTab(facultyId: _facultyId!),
+                      _ScheduleTab(facultyId: _facultyId!),
+                      _StudentsTab(facultyId: _facultyId!),
+                    ])),
             ]),
     );
   }
 
   Widget _buildTabBar() {
-    const tabs = ['Overview', 'Queue', 'Schedule'];
+    const tabs = ['Overview', 'Queue', 'Schedule', 'Students', 'Community'];
     return Container(
       color: AppColors.surface,
       child: Row(children: List.generate(tabs.length, (i) {
@@ -121,104 +144,52 @@ class _FacultyDashboardState extends ConsumerState<FacultyDashboardScreen> {
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
+// Watches facultyByIdStreamProvider directly — single doc stream, never reverts.
 
-// Now receives faculty directly from the stream in the parent — no re-derivation,
-// no caching hacks. The parent watches facultyByEmailStreamProvider which is a
-// live Firestore stream, so any status change instantly flows here.
 class _OverviewTab extends ConsumerWidget {
   final Faculty? faculty;
-  final String? facultyId;
-  const _OverviewTab({this.faculty, this.facultyId});
+  final String facultyId;
+  const _OverviewTab({this.faculty, required this.facultyId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Always get the freshest data from the single-doc stream.
+    // Fall back to the passed-in faculty only while the stream is loading.
+    final liveAsync = ref.watch(facultyByIdStreamProvider(facultyId));
+    final live = liveAsync.value ?? faculty;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        _StatusCard(faculty: faculty, facultyId: facultyId, ref: ref, context: context),
+        _StatusCard(faculty: live, facultyId: facultyId),
         const SizedBox(height: 12),
-        _buildQuickActions(context, ref, facultyId, faculty?.status),
+        _QuickStatusPanel(facultyId: facultyId, currentStatus: live?.status),
         const SizedBox(height: 12),
-        _buildQueueSummary(ref, facultyId),
+        _QueueSummary(facultyId: facultyId),
       ]),
-    );
-  }
-
-  Widget _buildQuickActions(BuildContext context, WidgetRef ref, String? id, FacultyStatus? currentStatus) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Quick Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          FacultyStatus.available, FacultyStatus.busy, FacultyStatus.inLecture,
-          FacultyStatus.meeting, FacultyStatus.away,
-        ].map((s) => _StatusChip(
-          status: s,
-          isActive: currentStatus == s,
-          onTap: () {
-            if (id == null) return;
-            ref.read(facultyNotifierProvider.notifier).updateStatus(id, s);
-            WidgetService.updateStatus(s);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Status set to ${s.label}'),
-              backgroundColor: s.color,
-            ));
-          },
-        )).toList()),
-      ]),
-    );
-  }
-
-  Widget _buildQueueSummary(WidgetRef ref, String? id) {
-    if (id == null) return const SizedBox.shrink();
-    final qAsync = ref.watch(consultationsByFacultyProvider(id));
-    return qAsync.when(
-      data: (list) {
-        final waiting    = list.where((c) => c.status == ConsultationStatus.pending).length;
-        final inProgress = list.where((c) => c.status == ConsultationStatus.inProgress).length;
-        return Row(children: [
-          Expanded(child: _SummaryTile(label: 'Waiting',     value: '$waiting',    color: AppColors.warning)),
-          const SizedBox(width: 12),
-          Expanded(child: _SummaryTile(label: 'In Progress', value: '$inProgress', color: AppColors.info)),
-          const SizedBox(width: 12),
-          Expanded(child: _SummaryTile(label: 'Total Today', value: '${list.length}', color: AppColors.primary)),
-        ]);
-      },
-      loading: () => const SizedBox.shrink(),
-      error:   (_, __) => const SizedBox.shrink(),
     );
   }
 }
 
-class _StatusCard extends StatelessWidget {
-  final Faculty? faculty;
-  final String? facultyId;
-  final WidgetRef ref;
-  final BuildContext context;
-  const _StatusCard({this.faculty, this.facultyId, required this.ref, required this.context});
+// ─── Status Card ──────────────────────────────────────────────────────────────
 
-  /// Returns a gradient based on the current status color — darker shade to lighter
-  LinearGradient _gradientForStatus(FacultyStatus status) {
-    final base  = status.color;
+class _StatusCard extends ConsumerWidget {
+  final Faculty? faculty;
+  final String facultyId;
+  const _StatusCard({this.faculty, required this.facultyId});
+
+  LinearGradient _gradient(FacultyStatus s) {
+    final base  = s.color;
     final light = Color.lerp(base, Colors.white, 0.25) ?? base;
     final dark  = Color.lerp(base, Colors.black, 0.15) ?? base;
-    return LinearGradient(
-      colors: [dark, light],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    return LinearGradient(colors: [dark, light],
+        begin: Alignment.topLeft, end: Alignment.bottomRight);
   }
 
   @override
-  Widget build(BuildContext context) {
-    final status = faculty?.status ?? FacultyStatus.available;
-    final gradient = _gradientForStatus(status);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status   = faculty?.status ?? FacultyStatus.available;
+    final gradient = _gradient(status);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 400),
@@ -229,36 +200,30 @@ class _StatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(
           color: status.color.withValues(alpha: 0.3),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
+          blurRadius: 16, offset: const Offset(0, 6),
         )],
       ),
       child: Row(children: [
-        // Tappable avatar with upload overlay
         GestureDetector(
-          onTap: facultyId != null
-              ? () => _pickAvatar(context)
-              : null,
+          onTap: () => _pickAvatar(context, ref),
           child: Stack(children: [
             FacultyAvatar(
               avatarBase64: faculty?.avatarUrl,
               initials: faculty?.initials ?? '?',
-              size: 56,
-              borderRadius: 16,
+              size: 56, borderRadius: 16,
             ),
-            if (facultyId != null)
-              Positioned(
-                right: 0, bottom: 0,
-                child: Container(
-                  width: 20, height: 20,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                  child: const Icon(Icons.camera_alt_rounded, size: 11, color: AppColors.primary),
+            Positioned(
+              right: 0, bottom: 0,
+              child: Container(
+                width: 20, height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
                 ),
+                child: const Icon(Icons.camera_alt_rounded, size: 11, color: AppColors.primary),
               ),
+            ),
           ]),
         ),
         const SizedBox(width: 16),
@@ -266,11 +231,13 @@ class _StatusCard extends StatelessWidget {
           const Text('Current Status', style: TextStyle(fontSize: 12, color: Colors.white70)),
           const SizedBox(height: 6),
           Text(status.label.toUpperCase(),
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
+                  color: Colors.white, letterSpacing: 0.5)),
           if (faculty?.activeContext != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(faculty!.activeContext!, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              child: Text(faculty!.activeContext!,
+                  style: const TextStyle(fontSize: 12, color: Colors.white70)),
             ),
         ])),
         Container(
@@ -285,14 +252,14 @@ class _StatusCard extends StatelessWidget {
     );
   }
 
-  void _pickAvatar(BuildContext context) {
-    if (facultyId == null) return;
+  void _pickAvatar(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
       builder: (_) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Profile Photo', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('Profile Photo',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 16),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -302,7 +269,7 @@ class _StatusCard extends StatelessWidget {
             title: const Text('Choose from gallery', style: TextStyle(fontWeight: FontWeight.w600)),
             onTap: () async {
               Navigator.pop(context);
-              await ref.read(avatarNotifierProvider.notifier).pickAndUpload(facultyId!);
+              await ref.read(avatarNotifierProvider.notifier).pickAndUpload(facultyId);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text('Profile photo updated'),
@@ -317,10 +284,11 @@ class _StatusCard extends StatelessWidget {
               leading: Container(width: 40, height: 40,
                   decoration: BoxDecoration(color: AppColors.errorBg, borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 20)),
-              title: const Text('Remove photo', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+              title: const Text('Remove photo',
+                  style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
               onTap: () async {
                 Navigator.pop(context);
-                await ref.read(avatarNotifierProvider.notifier).removeAvatar(facultyId!);
+                await ref.read(avatarNotifierProvider.notifier).removeAvatar(facultyId);
               },
             ),
         ]),
@@ -329,16 +297,230 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
+// ─── Quick Status Panel ───────────────────────────────────────────────────────
+// Separated into its own ConsumerWidget so it rebuilds independently.
+
+class _QuickStatusPanel extends ConsumerWidget {
+  final String facultyId;
+  final FacultyStatus? currentStatus;
+  const _QuickStatusPanel({required this.facultyId, this.currentStatus});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifierState = ref.watch(facultyNotifierProvider);
+    // Also watch the live faculty doc to show custom status text
+    final liveAsync = ref.watch(facultyByIdStreamProvider(facultyId));
+    final live = liveAsync.value;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('Quick Status',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Spacer(),
+          if (notifierState is AsyncLoading)
+            const SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          if (notifierState is AsyncError)
+            Tooltip(
+              message: notifierState.error.toString(),
+              child: const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+            ),
+        ]),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: [
+            FacultyStatus.available,
+            FacultyStatus.busy,
+            FacultyStatus.inLecture,
+            FacultyStatus.meeting,
+            FacultyStatus.away,
+            FacultyStatus.onHoliday,
+          ].map((s) => _StatusChip(
+            status: s,
+            isActive: currentStatus == s,
+            isLoading: notifierState is AsyncLoading,
+            onTap: () async {
+              if (notifierState is AsyncLoading) return;
+              await ref.read(facultyNotifierProvider.notifier).updateStatus(facultyId, s);
+              final result = ref.read(facultyNotifierProvider);
+              if (context.mounted) {
+                if (result is AsyncError) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Failed: ${result.error}'),
+                    backgroundColor: AppColors.error,
+                  ));
+                } else {
+                  WidgetService.updateStatus(s);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Status set to ${s.label}'),
+                    backgroundColor: s.color,
+                    duration: const Duration(seconds: 2),
+                  ));
+                }
+              }
+            },
+          )).toList(),
+        ),
+        const SizedBox(height: 10),
+        // Custom status button
+        GestureDetector(
+          onTap: () => _showCustomStatusDialog(context, ref, live?.customStatusText),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: currentStatus == FacultyStatus.custom
+                  ? FacultyStatus.custom.color
+                  : FacultyStatus.custom.color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: FacultyStatus.custom.color.withValues(
+                    alpha: currentStatus == FacultyStatus.custom ? 1.0 : 0.3),
+                width: currentStatus == FacultyStatus.custom ? 1.5 : 1,
+              ),
+              boxShadow: currentStatus == FacultyStatus.custom
+                  ? [BoxShadow(
+                      color: FacultyStatus.custom.color.withValues(alpha: 0.3),
+                      blurRadius: 8, offset: const Offset(0, 3))]
+                  : null,
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.edit_note_rounded, size: 14,
+                  color: currentStatus == FacultyStatus.custom
+                      ? Colors.white
+                      : FacultyStatus.custom.color),
+              const SizedBox(width: 6),
+              Text(
+                currentStatus == FacultyStatus.custom && live?.customStatusText != null
+                    ? live!.customStatusText!
+                    : 'Custom Status…',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: currentStatus == FacultyStatus.custom
+                      ? Colors.white
+                      : FacultyStatus.custom.color,
+                ),
+              ),
+              if (currentStatus == FacultyStatus.custom) ...[
+                const SizedBox(width: 4),
+                Container(width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                        color: Colors.white, shape: BoxShape.circle)),
+              ],
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  void _showCustomStatusDialog(
+      BuildContext context, WidgetRef ref, String? current) {
+    final ctrl = TextEditingController(text: current ?? '');
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Custom Status'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Write your own status message. Students will see this.',
+            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLength: 60,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Grading papers, back at 3pm',
+              prefixIcon: Icon(Icons.edit_note_rounded, size: 18),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final text = ctrl.text.trim();
+              Navigator.pop(context);
+              if (text.isEmpty) return;
+              await ref.read(facultyNotifierProvider.notifier).updateStatus(
+                facultyId,
+                FacultyStatus.custom,
+                customStatusText: text,
+              );
+              if (context.mounted) {
+                WidgetService.updateStatus(FacultyStatus.custom, customStatusText: text);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Status: $text'),
+                  backgroundColor: FacultyStatus.custom.color,
+                  duration: const Duration(seconds: 2),
+                ));
+              }
+            },
+            child: const Text('Set Status'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Queue Summary ────────────────────────────────────────────────────────────
+
+class _QueueSummary extends ConsumerWidget {
+  final String facultyId;
+  const _QueueSummary({required this.facultyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final qAsync = ref.watch(consultationsByFacultyProvider(facultyId));
+    return qAsync.when(
+      data: (list) {
+        final waiting    = list.where((c) => c.status == ConsultationStatus.pending).length;
+        final inProgress = list.where((c) => c.status == ConsultationStatus.inProgress).length;
+        return Row(children: [
+          Expanded(child: _SummaryTile(label: 'Waiting',     value: '$waiting',      color: AppColors.warning)),
+          const SizedBox(width: 12),
+          Expanded(child: _SummaryTile(label: 'In Progress', value: '$inProgress',   color: AppColors.info)),
+          const SizedBox(width: 12),
+          Expanded(child: _SummaryTile(label: 'Total Today', value: '${list.length}', color: AppColors.primary)),
+        ]);
+      },
+      loading: () => const SizedBox.shrink(),
+      error:   (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   final FacultyStatus status;
   final bool isActive;
+  final bool isLoading;
   final VoidCallback onTap;
-  const _StatusChip({required this.status, required this.onTap, this.isActive = false});
+  const _StatusChip({
+    required this.status,
+    required this.onTap,
+    this.isActive = false,
+    this.isLoading = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -350,7 +532,8 @@ class _StatusChip extends StatelessWidget {
             width: isActive ? 1.5 : 1,
           ),
           boxShadow: isActive
-              ? [BoxShadow(color: status.color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))]
+              ? [BoxShadow(color: status.color.withValues(alpha: 0.3),
+                  blurRadius: 8, offset: const Offset(0, 3))]
               : null,
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -364,10 +547,8 @@ class _StatusChip extends StatelessWidget {
               )),
           if (isActive) ...[
             const SizedBox(width: 4),
-            Container(
-              width: 6, height: 6,
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            ),
+            Container(width: 6, height: 6,
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
           ],
         ]),
       ),
@@ -401,13 +582,12 @@ class _SummaryTile extends StatelessWidget {
 // ─── Queue Tab ────────────────────────────────────────────────────────────────
 
 class _QueueTab extends ConsumerWidget {
-  final String? facultyId;
-  const _QueueTab({this.facultyId});
+  final String facultyId;
+  const _QueueTab({required this.facultyId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (facultyId == null) return const Center(child: Text('No faculty profile linked'));
-    final qAsync = ref.watch(consultationsByFacultyProvider(facultyId!));
+    final qAsync = ref.watch(consultationsByFacultyProvider(facultyId));
 
     return qAsync.when(
       data: (list) {
@@ -522,93 +702,89 @@ class _QueueCard extends StatelessWidget {
 // ─── Schedule Tab ─────────────────────────────────────────────────────────────
 
 class _ScheduleTab extends ConsumerWidget {
-  final String? facultyId;
-  const _ScheduleTab({this.facultyId});
+  final String facultyId;
+  const _ScheduleTab({required this.facultyId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (facultyId == null) {
-      return const Center(child: Text('No faculty profile linked'));
-    }
-    final ttAsync = ref.watch(facultyTimetableProvider(facultyId!));
+    final ttAsync = ref.watch(facultyTimetableProvider(facultyId));
     final today = DateTime.now().weekday;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      // ── FAB: Add new lecture ──────────────────────────────────────────────
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showEntrySheet(context, ref, facultyId!, null),
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('Add Lecture', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      ),
-      body: ttAsync.when(
-        data: (entries) {
-          if (entries.isEmpty) {
-            return Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(18)),
-                  child: const Icon(Icons.calendar_today_outlined, color: AppColors.primary, size: 30),
-                ),
-                const SizedBox(height: 16),
-                const Text('No lectures yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                const SizedBox(height: 6),
-                const Text('Tap + Add Lecture to get started', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
-              ]),
-            );
-          }
-
-          // Group by day
-          final byDay = <int, List<TimetableEntry>>{};
-          for (final e in entries) {
-            byDay.putIfAbsent(e.dayOfWeek, () => []).add(e);
-          }
-          for (final list in byDay.values) {
-            list.sort((a, b) => a.startTime.compareTo(b.startTime));
-          }
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-            children: [1, 2, 3, 4, 5, 6, 7]
-                .where((d) => byDay.containsKey(d))
-                .map((d) {
-              const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-              final isToday = d == today;
-              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // Day header
-                Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 8),
-                  child: Row(children: [
-                    Text(dayNames[d - 1],
-                        style: TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w700,
-                          color: isToday ? AppColors.primary : AppColors.textMuted,
-                          letterSpacing: 0.3,
-                        )),
-                    if (isToday) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(6)),
-                        child: const Text('TODAY', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary)),
-                      ),
-                    ],
+    return ColoredBox(
+      color: AppColors.background,
+      child: Stack(
+        children: [
+          ttAsync.when(
+            data: (entries) {
+              if (entries.isEmpty) {
+                return Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 64, height: 64,
+                      decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(18)),
+                      child: const Icon(Icons.calendar_today_outlined, color: AppColors.primary, size: 30),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('No lectures yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    const SizedBox(height: 6),
+                    const Text('Tap + Add Lecture to get started', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
                   ]),
-                ),
-                ...byDay[d]!.map((e) => _EditableTimetableCard(
-                  entry: e,
-                  isToday: isToday,
-                  onEdit: () => _showEntrySheet(context, ref, facultyId!, e),
-                  onDelete: () => _confirmDelete(context, ref, e),
-                )),
-              ]);
-            }).toList(),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+                );
+              }
+              final byDay = <int, List<TimetableEntry>>{};
+              for (final e in entries) {
+                byDay.putIfAbsent(e.dayOfWeek, () => []).add(e);
+              }
+              for (final list in byDay.values) {
+                list.sort((a, b) => a.startTime.compareTo(b.startTime));
+              }
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                children: [1, 2, 3, 4, 5, 6, 7]
+                    .where((d) => byDay.containsKey(d))
+                    .map((d) {
+                  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                  final isToday = d == today;
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16, bottom: 8),
+                      child: Row(children: [
+                        Text(dayNames[d - 1],
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                                color: isToday ? AppColors.primary : AppColors.textMuted, letterSpacing: 0.3)),
+                        if (isToday) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(6)),
+                            child: const Text('TODAY', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                          ),
+                        ],
+                      ]),
+                    ),
+                    ...byDay[d]!.map((e) => _EditableTimetableCard(
+                      entry: e, isToday: isToday,
+                      onEdit: () => _showEntrySheet(context, ref, facultyId, e),
+                      onDelete: () => _confirmDelete(context, ref, e),
+                    )),
+                  ]);
+                }).toList(),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('$e')),
+          ),
+          // FAB positioned inside the Stack so no nested Scaffold needed
+          Positioned(
+            bottom: 24, right: 16,
+            child: FloatingActionButton.extended(
+              onPressed: () => _showEntrySheet(context, ref, facultyId, null),
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add_rounded, color: Colors.white),
+              label: const Text('Add Lecture', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -723,7 +899,7 @@ class _ScheduleTab extends ConsumerWidget {
 
               // Save button
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (subjectCtrl.text.trim().isEmpty || roomCtrl.text.trim().isEmpty) return;
                   final entry = TimetableEntry(
                     id: existing?.id ?? '',
@@ -735,15 +911,19 @@ class _ScheduleTab extends ConsumerWidget {
                     endTime: _formatTime(endTime),
                     room: roomCtrl.text.trim(),
                   );
-                  if (isEdit) {
-                    ref.read(timetableNotifierProvider.notifier).updateEntry(entry);
-                  } else {
-                    ref.read(timetableNotifierProvider.notifier).addEntry(entry);
-                  }
+                  // Capture messenger before async gap to avoid stale context
+                  final messenger = ScaffoldMessenger.of(context);
+                  // Close sheet first, then save
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(isEdit ? 'Lecture updated' : 'Lecture added'),
-                    backgroundColor: AppColors.success,
+                  final ok = isEdit
+                      ? await ref.read(timetableNotifierProvider.notifier).updateEntry(entry)
+                      : await ref.read(timetableNotifierProvider.notifier).addEntry(entry);
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(ok
+                        ? (isEdit ? 'Lecture updated' : 'Lecture added successfully')
+                        : 'Failed to save lecture'),
+                    backgroundColor: ok ? AppColors.success : AppColors.error,
+                    duration: const Duration(seconds: 2),
                   ));
                 },
                 child: Text(isEdit ? 'Save Changes' : 'Add Lecture'),
@@ -787,6 +967,227 @@ class _ScheduleTab extends ConsumerWidget {
 
   String _formatTime(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+// ─── Students Tab (CR Management) ─────────────────────────────────────────────
+
+class _StudentsTab extends ConsumerStatefulWidget {
+  final String facultyId;
+  const _StudentsTab({required this.facultyId});
+
+  @override
+  ConsumerState<_StudentsTab> createState() => _StudentsTabState();
+}
+
+class _StudentsTabState extends ConsumerState<_StudentsTab> {
+  String _search = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final studentsAsync = ref.watch(allStudentsProvider);
+    
+    return studentsAsync.when(
+      data: (allStudents) {
+        // Filter students based on search
+        var students = allStudents.where((s) {
+          final query = _search.toLowerCase();
+          return query.isEmpty ||
+              s.name.toLowerCase().contains(query) ||
+              s.email.toLowerCase().contains(query) ||
+              (s.studentCode?.toLowerCase().contains(query) ?? false) ||
+              (s.department?.toLowerCase().contains(query) ?? false);
+        }).toList();
+
+        // Sort: CR students first, then by name
+        students.sort((a, b) {
+          if (a.isCR && !b.isCR) return -1;
+          if (!a.isCR && b.isCR) return 1;
+          return a.name.compareTo(b.name);
+        });
+
+        return Column(children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: TextField(
+              onChanged: (v) => setState(() => _search = v),
+              decoration: const InputDecoration(
+                hintText: 'Search students...',
+                prefixIcon: Icon(Icons.search_rounded, size: 18),
+                isDense: true,
+              ),
+            ),
+          ),
+          
+          // Header info
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(children: [
+              Text('${students.length} students',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              const Spacer(),
+              Text('${students.where((s) => s.isCR).length} Class Representatives',
+                  style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+
+          // Students list
+          Expanded(
+            child: students.isEmpty
+                ? const Center(child: Text('No students found', style: TextStyle(color: AppColors.textMuted)))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    itemCount: students.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => _StudentCRCard(
+                      student: students[i],
+                      onToggleCR: () => _toggleCR(ref, students[i]),
+                    ),
+                  ),
+          ),
+        ]);
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.error))),
+    );
+  }
+
+  void _toggleCR(WidgetRef ref, User student) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(student.isCR ? 'Remove CR Status' : 'Make Class Representative'),
+        content: Text(student.isCR
+            ? 'Remove ${student.name} as Class Representative? They will no longer be able to post events.'
+            : 'Make ${student.name} a Class Representative? They will be able to post events for the class.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final success = await ref
+                  .read(adminUserNotifierProvider.notifier)
+                  .toggleCR(student.id, !student.isCR);
+              if (mounted) {
+                if (success) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(student.isCR
+                        ? '${student.name} is no longer a CR'
+                        : '${student.name} is now a Class Representative'),
+                    backgroundColor: student.isCR ? AppColors.warning : AppColors.success,
+                  ));
+                } else {
+                  final err = ref.read(adminUserNotifierProvider);
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Failed: ${err is AsyncError ? err.error : 'Permission denied'}'),
+                    backgroundColor: AppColors.error,
+                  ));
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: student.isCR ? AppColors.warning : AppColors.primary,
+            ),
+            child: Text(student.isCR ? 'Remove CR' : 'Make CR'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudentCRCard extends StatelessWidget {
+  final User student;
+  final VoidCallback onToggleCR;
+  const _StudentCRCard({required this.student, required this.onToggleCR});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: student.isCR ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border,
+          width: student.isCR ? 1.5 : 1,
+        ),
+      ),
+      child: Row(children: [
+        // Avatar
+        CircleAvatar(
+          radius: 20,
+          backgroundColor: student.isCR ? AppColors.primaryLight : AppColors.surfaceElevated,
+          child: Text(
+            student.name.isNotEmpty ? student.name[0].toUpperCase() : '?',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: student.isCR ? AppColors.primary : AppColors.textMuted,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        
+        // Student info
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                child: Text(student.name,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ),
+              if (student.isCR)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('CR',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                ),
+            ]),
+            const SizedBox(height: 2),
+            Text(student.email,
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            if (student.studentCode != null || student.department != null)
+              Text(
+                [student.studentCode, student.department].where((s) => s != null && s.isNotEmpty).join(' • '),
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+              ),
+          ]),
+        ),
+        
+        // Toggle CR button
+        GestureDetector(
+          onTap: onToggleCR,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: student.isCR ? AppColors.warning.withValues(alpha: 0.1) : AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: student.isCR ? AppColors.warning : AppColors.primary,
+              ),
+            ),
+            child: Text(
+              student.isCR ? 'Remove CR' : 'Make CR',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: student.isCR ? AppColors.warning : AppColors.primary,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
 // ─── Editable Timetable Card ──────────────────────────────────────────────────

@@ -98,6 +98,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Creates faculty account with auto-generated demo password + sends reset email.
+  /// Returns the demo password string so admin can display/copy it.
+  Future<String?> createFacultyWithDemoPassword({
+    required String email,
+    required String name,
+    required String facultyFirestoreId,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final demo = await _repository.createFacultyAccountWithDemoPassword(
+        email: email,
+        name: name,
+        facultyFirestoreId: facultyFirestoreId,
+      );
+      state = state.copyWith(isLoading: false);
+      return demo;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: _clean(e));
+      return null;
+    }
+  }
+
   Future<void> sendFacultyPasswordReset(String email) async {
     await _repository.sendFacultyPasswordReset(email);
   }
@@ -136,9 +158,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithGoogle() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      // Google sign-in removed from simplified repo
-      state = state.copyWith(isLoading: false,
-          error: 'Google sign-in is not configured.');
+      final user = await _repository.signInWithGoogle();
+      state = state.copyWith(isLoading: false, user: user);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: _clean(e));
     }

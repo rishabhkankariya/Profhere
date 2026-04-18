@@ -9,14 +9,16 @@ class FirestoreFacultyRepository implements FacultyRepository {
 
   Faculty _fromDoc(DocumentSnapshot doc) {
     final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+    final rawIndex = (d['statusIndex'] as num?)?.toInt() ?? 0;
+    final statusIndex = rawIndex.clamp(0, FacultyStatus.values.length - 1);
     return Faculty(
       id: doc.id,
       name: d['name']?.toString() ?? 'Unknown',
-      email: d['email']?.toString() ?? '',
+      email: (d['email']?.toString() ?? '').toLowerCase(),
       department: d['department']?.toString() ?? '',
       building: d['building']?.toString() ?? '',
       cabinId: d['cabinId']?.toString() ?? '',
-      status: FacultyStatus.values[(d['statusIndex'] as num?)?.toInt() ?? 0],
+      status: FacultyStatus.values[statusIndex],
       zone: d['zone']?.toString(),
       specialization: d['specialization']?.toString(),
       bio: d['bio']?.toString(),
@@ -29,12 +31,13 @@ class FirestoreFacultyRepository implements FacultyRepository {
       expectedReturnAt: (d['expectedReturnAt'] as Timestamp?)?.toDate(),
       manualOverrideUntil: (d['manualOverrideUntil'] as Timestamp?)?.toDate(),
       activeContext: d['activeContext']?.toString(),
+      customStatusText: d['customStatusText']?.toString(),
     );
   }
 
   Map<String, dynamic> _toMap(Faculty f) => {
     'name': f.name,
-    'email': f.email,
+    'email': f.email.toLowerCase(),
     'department': f.department,
     'building': f.building,
     'cabinId': f.cabinId,
@@ -51,6 +54,7 @@ class FirestoreFacultyRepository implements FacultyRepository {
     'expectedReturnAt': f.expectedReturnAt != null ? Timestamp.fromDate(f.expectedReturnAt!) : null,
     'manualOverrideUntil': f.manualOverrideUntil != null ? Timestamp.fromDate(f.manualOverrideUntil!) : null,
     'activeContext': f.activeContext,
+    'customStatusText': f.customStatusText,
   };
 
   @override
@@ -58,12 +62,8 @@ class FirestoreFacultyRepository implements FacultyRepository {
     return _col.snapshots().map((s) => s.docs.map(_fromDoc).toList());
   }
 
-  /// Stream a single faculty document by ID — most stable way to watch one doc.
   Stream<Faculty?> getFacultyStream(String id) {
-    return _col.doc(id).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      return _fromDoc(doc);
-    });
+    return _col.doc(id).snapshots().map((doc) => doc.exists ? _fromDoc(doc) : null);
   }
 
   @override
@@ -75,21 +75,30 @@ class FirestoreFacultyRepository implements FacultyRepository {
   @override
   Future<Faculty?> getFacultyById(String id) async {
     final doc = await _col.doc(id).get();
-    if (!doc.exists) return null;
-    return _fromDoc(doc);
+    return doc.exists ? _fromDoc(doc) : null;
   }
 
   @override
-  Future<void> updateFacultyStatus(String id, FacultyStatus status, {
-    String? activeContext, DateTime? expectedReturnAt, DateTime? manualOverrideUntil,
+  Future<void> updateFacultyStatus(
+    String id,
+    FacultyStatus status, {
+    String? activeContext,
+    DateTime? expectedReturnAt,
+    DateTime? manualOverrideUntil,
+    String? customStatusText,
   }) async {
-    await _col.doc(id).update({
+    final data = <String, dynamic>{
       'statusIndex': status.index,
-      'activeContext': activeContext,
-      'expectedReturnAt': expectedReturnAt != null ? Timestamp.fromDate(expectedReturnAt) : null,
-      'manualOverrideUntil': manualOverrideUntil != null ? Timestamp.fromDate(manualOverrideUntil) : null,
       'lastUpdated': FieldValue.serverTimestamp(),
-    });
+    };
+    if (activeContext != null)       data['activeContext']       = activeContext;
+    if (expectedReturnAt != null)    data['expectedReturnAt']    = Timestamp.fromDate(expectedReturnAt);
+    if (manualOverrideUntil != null) data['manualOverrideUntil'] = Timestamp.fromDate(manualOverrideUntil);
+    if (customStatusText != null)    data['customStatusText']    = customStatusText;
+    // Clear custom text when switching away from custom
+    if (status != FacultyStatus.custom) data['customStatusText'] = null;
+
+    await _col.doc(id).update(data);
   }
 
   @override

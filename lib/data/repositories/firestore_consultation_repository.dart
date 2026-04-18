@@ -7,7 +7,7 @@ class FirestoreConsultationRepository {
   final _col = FirebaseFirestore.instance.collection('consultations');
 
   Consultation _fromDoc(DocumentSnapshot doc) {
-    final d = Map<String, dynamic>.from(doc.data() as Map? ?? {});
+    final d = doc.data() as Map<String, dynamic>;
     return Consultation(
       id: doc.id,
       facultyId: d['facultyId'] as String? ?? '',
@@ -34,6 +34,20 @@ class FirestoreConsultationRepository {
           list.sort((a, b) => a.position.compareTo(b.position));
           return list;
         });
+  }
+
+  /// Stream all active (pending/inProgress) consultations for a student.
+  Stream<List<Consultation>> watchByStudent(String studentId) {
+    return _col
+        .where('studentId', isEqualTo: studentId)
+        .snapshots()
+        .handleError((_) {})
+        .map((s) => s.docs
+            .map(_fromDoc)
+            .where((c) =>
+                c.status == ConsultationStatus.pending ||
+                c.status == ConsultationStatus.inProgress)
+            .toList());
   }
 
   Future<List<Consultation>> getByFaculty(String facultyId) async {

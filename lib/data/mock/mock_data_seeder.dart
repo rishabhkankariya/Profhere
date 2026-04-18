@@ -82,7 +82,6 @@ class MockDataSeeder {
         if (!doc.exists) {
           await _db.collection('users').doc(uid).set({
             'name': demo['name'],
-            'email': demo['email'] as String,
             'roleIndex': demo['roleIndex'],
             'studentCode': demo['code'],
             'department': demo['dept'],

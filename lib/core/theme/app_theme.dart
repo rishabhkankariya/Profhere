@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 
 class AppTheme {
@@ -16,9 +15,10 @@ class AppTheme {
         error: AppColors.error,
       ),
       scaffoldBackgroundColor: AppColors.background,
-      textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+      textTheme: base.textTheme.apply(
         bodyColor: AppColors.textPrimary,
         displayColor: AppColors.textPrimary,
+        fontFamily: 'Inter', // Fallback to system font if Inter not available
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.surface,

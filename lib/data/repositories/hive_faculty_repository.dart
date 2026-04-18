@@ -38,6 +38,7 @@ class HiveFacultyRepository implements FacultyRepository {
     String? activeContext,
     DateTime? expectedReturnAt,
     DateTime? manualOverrideUntil,
+    String? customStatusText,
   }) async {
     final model = HiveService.faculty.get(id);
     if (model == null) return;

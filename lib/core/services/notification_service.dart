@@ -1,19 +1,26 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../domain/entities/community_message.dart';
 import '../../domain/entities/faculty.dart';
+import 'audio_service.dart';
+
+// flutter_local_notifications is not supported on web — import conditionally
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'
+    if (dart.library.html) 'package:profhere/core/stubs/notifications_stub.dart';
 
 class NotificationService {
-  static final _plugin = FlutterLocalNotificationsPlugin();
+  static FlutterLocalNotificationsPlugin? _plugin;
+  static FlutterLocalNotificationsPlugin get _p =>
+      _plugin ??= FlutterLocalNotificationsPlugin();
 
   static final Map<String, DateTime> _lastNotified = {};
-  static const _debounce = Duration(seconds: 30);
+  static const _debounce = Duration(seconds: 5); // reduced from 30s — allow more frequent notifications
 
   static bool isCommunityOpen = false;
   static String? currentUserId;
   static String? currentUserName;
 
+  // ── Channel IDs ────────────────────────────────────────────────────────────
   static const _channelId      = 'community_chat';
   static const _channelName    = 'Community Chat';
   static const _mentionId      = 'community_mention';
@@ -26,9 +33,9 @@ class NotificationService {
     try {
       const android = AndroidInitializationSettings('@mipmap/ic_launcher');
       const settings = InitializationSettings(android: android);
-      await _plugin.initialize(settings);
+      await _p.initialize(settings);
 
-      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+      final androidPlugin = _p.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
 
       await androidPlugin?.createNotificationChannel(
@@ -36,7 +43,7 @@ class NotificationService {
           _channelId, _channelName,
           description: 'New messages in Community Chat',
           importance: Importance.defaultImportance,
-          playSound: true,
+          playSound: false, // audio handled by AudioService
           enableVibration: false,
         ),
       );
@@ -45,17 +52,16 @@ class NotificationService {
           _mentionId, _mentionName,
           description: 'When someone mentions you in Community Chat',
           importance: Importance.high,
-          playSound: true,
+          playSound: false,
           enableVibration: true,
         ),
       );
-      // Faculty status channel — for subscribed faculty alerts
       await androidPlugin?.createNotificationChannel(
         const AndroidNotificationChannel(
           _facultyChannel, _facultyChName,
           description: 'Status updates from faculty you follow',
           importance: Importance.high,
-          playSound: true,
+          playSound: false,
           enableVibration: true,
         ),
       );
@@ -64,8 +70,9 @@ class NotificationService {
     }
   }
 
+  // ── Faculty status change ──────────────────────────────────────────────────
+
   /// Call when a subscribed faculty changes status.
-  /// Only fires if the student has notifications enabled.
   static Future<void> notifyFacultyStatusChange({
     required String facultyName,
     required FacultyStatus newStatus,
@@ -74,12 +81,29 @@ class NotificationService {
     if (kIsWeb) return;
     if (!notificationsEnabled) return;
 
-    // Debounce per faculty — avoid spam on rapid changes
+    // Debounce per faculty
     final key = 'faculty_$facultyName';
     final last = _lastNotified[key];
-    if (last != null && DateTime.now().difference(last) < const Duration(seconds: 10)) return;
+    if (last != null &&
+        DateTime.now().difference(last) < const Duration(seconds: 10)) {
+      return;
+    }
     _lastNotified[key] = DateTime.now();
 
+    // ── Play audio based on new status ──────────────────────────────────────
+    final sound = switch (newStatus) {
+      FacultyStatus.available    => AppSound.facultyAvailable,
+      FacultyStatus.busy         => AppSound.facultyBusy,
+      FacultyStatus.inLecture    => AppSound.facultyBusy,
+      FacultyStatus.meeting      => AppSound.facultyBusy,
+      FacultyStatus.away         => AppSound.facultyAway,
+      FacultyStatus.notAvailable => AppSound.facultyAway,
+      FacultyStatus.onHoliday    => AppSound.facultyAway,
+      FacultyStatus.custom       => AppSound.facultyStatusChange,
+    };
+    AudioService.play(sound);
+
+    // ── Push notification ────────────────────────────────────────────────────
     try {
       final body = switch (newStatus) {
         FacultyStatus.available    => '$facultyName is now Available — visit now!',
@@ -88,18 +112,22 @@ class NotificationService {
         FacultyStatus.meeting      => '$facultyName is In a Meeting.',
         FacultyStatus.away         => '$facultyName is Away.',
         FacultyStatus.notAvailable => '$facultyName is Not Available.',
+        FacultyStatus.onHoliday    => '$facultyName is On Holiday.',
+        FacultyStatus.custom       => '$facultyName updated their status.',
       };
 
-      await _plugin.show(
+      await _p.show(
         facultyName.hashCode,
-        'Faculty Update',
+      '${_statusTitle(newStatus)} — $facultyName',
         body,
         NotificationDetails(
           android: AndroidNotificationDetails(
             _facultyChannel, _facultyChName,
             importance: Importance.high,
             priority: Priority.high,
+            playSound: false,
             styleInformation: BigTextStyleInformation(body),
+            largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
           ),
         ),
       );
@@ -108,58 +136,72 @@ class NotificationService {
     }
   }
 
-  /// Call this when a new message arrives in the community stream.
-  /// [notificationsEnabled] comes from the user's prefs.
+  static String _statusTitle(FacultyStatus s) => switch (s) {
+    FacultyStatus.available    => 'Faculty Available',
+    FacultyStatus.busy         => 'Faculty Busy',
+    FacultyStatus.inLecture    => 'In Lecture',
+    FacultyStatus.meeting      => 'In Meeting',
+    FacultyStatus.away         => 'Faculty Away',
+    FacultyStatus.notAvailable => 'Not Available',
+    FacultyStatus.onHoliday    => 'On Holiday',
+    FacultyStatus.custom       => 'Status Update',
+  };
+
+  // ── Community messages ─────────────────────────────────────────────────────
+
   static Future<void> onNewMessage({
     required CommunityMessage msg,
     required bool notificationsEnabled,
   }) async {
-    // Skip on web
     if (kIsWeb) return;
-    
-    // Never notify for own messages
     if (msg.senderId == currentUserId) return;
-    // Never notify for removed/flagged messages
     if (msg.status != MessageStatus.visible) return;
-    // Never notify if community screen is open
     if (isCommunityOpen) return;
 
     final isMention = currentUserName != null &&
-        msg.text.toLowerCase().contains('@${currentUserName!.split(' ').first.toLowerCase()}');
+        msg.text
+            .toLowerCase()
+            .contains('@${currentUserName!.split(' ').first.toLowerCase()}');
 
-    // For regular messages, respect the notifications preference
     if (!isMention && !notificationsEnabled) return;
 
-    // Debounce — don't spam from the same sender
+    // Debounce regular messages per sender
     final lastTime = _lastNotified[msg.senderId];
-    if (!isMention && lastTime != null && DateTime.now().difference(lastTime) < _debounce) {
+    if (!isMention &&
+        lastTime != null &&
+        DateTime.now().difference(lastTime) < _debounce) {
       return;
     }
     _lastNotified[msg.senderId] = DateTime.now();
 
+    // ── Audio ────────────────────────────────────────────────────────────────
+    AudioService.play(
+      isMention ? AppSound.communityMention : AppSound.communityMessage,
+    );
+
+    // ── Push notification ────────────────────────────────────────────────────
     try {
       if (isMention) {
         await _showMentionNotification(msg);
       } else {
         await _showMessageNotification(msg);
       }
-    } catch (e) {
-      // Silently fail if notification fails
-    }
+    } catch (_) {}
   }
 
   static Future<void> _showMentionNotification(CommunityMessage msg) async {
-    final senderDisplay = msg.isAnonymous ? 'Someone' : msg.senderName;
-    await _plugin.show(
+    final sender = msg.isAnonymous ? 'Someone' : msg.senderName;
+    await _p.show(
       msg.id.hashCode,
-      '📣 $senderDisplay mentioned you',
+      '$sender mentioned you',
       msg.text,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _mentionId,
-          _mentionName,
+          _mentionId, _mentionName,
           importance: Importance.high,
           priority: Priority.high,
+          playSound: false,
+          enableVibration: true,
           styleInformation: BigTextStyleInformation(msg.text),
           groupKey: 'community_mentions',
         ),
@@ -168,34 +210,30 @@ class NotificationService {
   }
 
   static Future<void> _showMessageNotification(CommunityMessage msg) async {
-    final senderDisplay = msg.isAnonymous ? 'Anonymous' : msg.senderName;
-    await _plugin.show(
-      // Use a stable ID per sender so messages from same person update the same notification
+    final sender = msg.isAnonymous ? 'Anonymous' : msg.senderName;
+    await _p.show(
       msg.senderId.hashCode,
-      'Community Chat — $senderDisplay',
+      'Community Chat — $sender',
       msg.text,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
+          _channelId, _channelName,
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
+          playSound: false,
           styleInformation: BigTextStyleInformation(msg.text),
           groupKey: 'community_messages',
-          setAsGroupSummary: false,
         ),
       ),
     );
   }
 
-  /// Cancel all community notifications (call when user opens the chat)
+  // ── Utility ────────────────────────────────────────────────────────────────
+
   static Future<void> cancelAll() async {
     if (kIsWeb) return;
-    
     try {
-      await _plugin.cancelAll();
-    } catch (e) {
-      // Silently fail if not supported
-    }
+      await _p.cancelAll();
+    } catch (_) {}
   }
 }

@@ -36,6 +36,18 @@ class ProfHereWidget : HomeWidgetProvider() {
             val statusValue = intent.getStringExtra(EXTRA_STATUS) ?: return
             val statusLabel = intent.getStringExtra(EXTRA_LABEL) ?: statusValue
 
+            // For custom status, open the app so the faculty can type their message
+            if (statusValue == "custom") {
+                val launchIntent = context.packageManager
+                    .getLaunchIntentForPackage(context.packageName)
+                    ?.apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        putExtra("widget_action", "custom_status")
+                    }
+                if (launchIntent != null) context.startActivity(launchIntent)
+                return
+            }
+
             HomeWidgetPlugin.getData(context)
                 .edit()
                 .putString("faculty_status", statusLabel)
@@ -72,17 +84,25 @@ class ProfHereWidget : HomeWidgetProvider() {
                 if (isLoggedIn) Color.parseColor("#16A34A") else Color.parseColor("#94A3B8")
             )
 
-            // All 5 status buttons — broadcast only, no app opens
+            // Row 1: Available | Busy | Lecture
             views.setOnClickPendingIntent(R.id.btn_available,
                 buildBroadcast(context, "available", "Available", 1))
             views.setOnClickPendingIntent(R.id.btn_busy,
                 buildBroadcast(context, "busy", "Busy", 2))
             views.setOnClickPendingIntent(R.id.btn_lecture,
                 buildBroadcast(context, "inLecture", "In Lecture", 3))
+
+            // Row 2: Meeting | Away | Holiday
             views.setOnClickPendingIntent(R.id.btn_meeting,
                 buildBroadcast(context, "meeting", "In Meeting", 4))
             views.setOnClickPendingIntent(R.id.btn_away,
                 buildBroadcast(context, "away", "Away", 5))
+            views.setOnClickPendingIntent(R.id.btn_holiday,
+                buildBroadcast(context, "onHoliday", "On Holiday", 6))
+
+            // Row 3: Custom (opens app)
+            views.setOnClickPendingIntent(R.id.btn_custom,
+                buildBroadcast(context, "custom", "Custom", 7))
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         } catch (e: Exception) {
@@ -100,7 +120,6 @@ class ProfHereWidget : HomeWidgetProvider() {
             component = ComponentName(context, ProfHereWidget::class.java)
             putExtra(EXTRA_STATUS, statusValue)
             putExtra(EXTRA_LABEL, statusLabel)
-            // Explicit package prevents broadcast being swallowed on MIUI/Samsung
             setPackage(context.packageName)
         }
         return PendingIntent.getBroadcast(

@@ -1,63 +1,69 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/academic.dart';
 import '../../data/repositories/firestore_timetable_repository.dart';
-import 'auth_provider.dart';
+import '../../core/services/audio_service.dart';
 
 final timetableRepositoryProvider = Provider<FirestoreTimetableRepository>((ref) {
   return FirestoreTimetableRepository();
 });
 
-/// Faculty timetable — auth-gated to avoid permission-denied before login
+/// Faculty timetable — use StreamProvider so UI updates live after add/edit/delete
 final facultyTimetableProvider =
-    FutureProvider.family<List<TimetableEntry>, String>((ref, facultyId) async {
-  final authState = await ref.watch(authStateProvider.future);
-  if (authState == null) return [];
-  return ref.watch(timetableRepositoryProvider).getByFaculty(facultyId);
+    StreamProvider.family<List<TimetableEntry>, String>((ref, facultyId) {
+  return ref.watch(timetableRepositoryProvider).watchByFaculty(facultyId);
 });
 
 // ─── Timetable Notifier ───────────────────────────────────────────────────────
 
 class TimetableNotifier extends StateNotifier<AsyncValue<void>> {
   final FirestoreTimetableRepository _repo;
-  final Ref _ref;
 
-  TimetableNotifier(this._repo, this._ref) : super(const AsyncValue.data(null));
+  TimetableNotifier(this._repo) : super(const AsyncValue.data(null));
 
-  Future<void> addEntry(TimetableEntry entry) async {
+  Future<bool> addEntry(TimetableEntry entry) async {
     state = const AsyncValue.loading();
     try {
       await _repo.addEntry(entry);
-      _ref.invalidate(facultyTimetableProvider);
       state = const AsyncValue.data(null);
+      AudioService.play(AppSound.success);
+      return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
+      AudioService.play(AppSound.error);
+      return false;
     }
   }
 
-  Future<void> updateEntry(TimetableEntry entry) async {
+  Future<bool> updateEntry(TimetableEntry entry) async {
     state = const AsyncValue.loading();
     try {
       await _repo.updateEntry(entry);
-      _ref.invalidate(facultyTimetableProvider);
       state = const AsyncValue.data(null);
+      AudioService.play(AppSound.success);
+      return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
+      AudioService.play(AppSound.error);
+      return false;
     }
   }
 
-  Future<void> deleteEntry(String id) async {
+  Future<bool> deleteEntry(String id) async {
     state = const AsyncValue.loading();
     try {
       await _repo.deleteEntry(id);
-      _ref.invalidate(facultyTimetableProvider);
       state = const AsyncValue.data(null);
+      AudioService.play(AppSound.success);
+      return true;
     } catch (e, st) {
       state = AsyncValue.error(e, st);
+      AudioService.play(AppSound.error);
+      return false;
     }
   }
 }
 
 final timetableNotifierProvider =
     StateNotifierProvider<TimetableNotifier, AsyncValue<void>>((ref) {
-  return TimetableNotifier(ref.watch(timetableRepositoryProvider), ref);
+  return TimetableNotifier(ref.watch(timetableRepositoryProvider));
 });

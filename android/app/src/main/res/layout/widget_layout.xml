@@ -56,7 +56,7 @@
         android:textColor="#6B7280"
         android:textSize="11sp" />
 
-    <!-- Divider using ImageView (View tag not allowed in RemoteViews) -->
+    <!-- Divider -->
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="1dp"
@@ -68,7 +68,7 @@
     <!-- Row 1: Available | Busy | Lecture -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="30dp"
+        android:layout_height="28dp"
         android:orientation="horizontal">
 
         <TextView
@@ -113,10 +113,10 @@
 
     </LinearLayout>
 
-    <!-- Row 2: In Meeting | Away -->
+    <!-- Row 2: In Meeting | Away | Holiday -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="30dp"
+        android:layout_height="28dp"
         android:orientation="horizontal"
         android:layout_marginTop="5dp">
 
@@ -127,7 +127,7 @@
             android:layout_weight="1"
             android:layout_marginEnd="3dp"
             android:gravity="center"
-            android:text="In Meeting"
+            android:text="Meeting"
             android:textColor="#7C3AED"
             android:textSize="10sp"
             android:textStyle="bold"
@@ -139,6 +139,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:layout_marginStart="3dp"
+            android:layout_marginEnd="3dp"
             android:gravity="center"
             android:text="Away"
             android:textColor="#6B7280"
@@ -147,11 +148,37 @@
             android:background="@drawable/widget_btn_gray" />
 
         <TextView
+            android:id="@+id/btn_holiday"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:layout_marginStart="3dp"
-            android:background="@android:color/transparent" />
+            android:gravity="center"
+            android:text="Holiday"
+            android:textColor="#0891B2"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_teal" />
+
+    </LinearLayout>
+
+    <!-- Row 3: Custom Status (full width) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:orientation="horizontal"
+        android:layout_marginTop="5dp">
+
+        <TextView
+            android:id="@+id/btn_custom"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="✏  Custom Status"
+            android:textColor="#4F46E5"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/widget_btn_indigo" />
 
     </LinearLayout>
 
