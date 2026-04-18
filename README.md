@@ -397,6 +397,12 @@ Built with Flutter · Powered by Firebase
 **[profhere.web.app](https://profhere.web.app)**
 
 </div>
+s
+## Changelog
 
+### v1.0.0 (Initial Release)
+- Launched ProfHere with core features for students, faculty, and admins.
+- Cross-platform support for Android and Web.
+- Real-time status updates, consultation queues, and event management.
 
-this update to check this branch is working or not 
+*For the latest updates, check the [GitHub releases](https://github.com/your-username/profhere/releases).*
