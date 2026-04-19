@@ -1,0 +1,9 @@
+{
+  "projectId": "a1cc55f5-6e6e-4cbb-a72d-6208f0e887e6",
+  "createdAt": 1776492487745,
+  "version": "1.0",
+  "startupCommands": [
+    "flutter pub get; $env:CHROME_EXECUTABLE='C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'; flutter run -d edge"
+  ],
+  "templateId": "any"
+}

@@ -284,7 +284,7 @@ class _DetailView extends ConsumerWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Current Status', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
           const SizedBox(height: 2),
-          Text(faculty.status.label,
+          Text(faculty.displayStatus,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: faculty.status.color)),
           if (faculty.activeContext != null)
             Text(faculty.activeContext!,
@@ -439,7 +439,7 @@ class _DetailView extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: faculty.status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                child: Text(faculty.status.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
+                child: Text(faculty.displayStatus, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
               ),
             ]),
             const SizedBox(height: 20),

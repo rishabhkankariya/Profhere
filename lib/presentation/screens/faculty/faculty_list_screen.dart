@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:convert';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/toast.dart';
@@ -15,6 +16,7 @@ import '../../providers/prefs_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
 import '../../widgets/skeleton_loader.dart';
+import '../../widgets/empty_state_widget.dart';
 import '../profile/edit_profile_screen.dart';
 import '../todo/todo_screen.dart';
 import '../events/events_screen.dart';
@@ -105,7 +107,7 @@ class _FacultyListScreenState extends ConsumerState<FacultyListScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: faculty.status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text(faculty.status.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
+                    child: Text(faculty.displayStatus, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: faculty.status.color)),
                   ),
                 ]),
                 const SizedBox(height: 20),
@@ -191,8 +193,12 @@ class _FacultyTab extends ConsumerWidget {
               sorted.sort((a, b) => a.name.compareTo(b.name));
             }
             if (sorted.isEmpty) {
-              return const SliverFillRemaining(
-                child: Center(child: Text('No faculty found', style: TextStyle(color: AppColors.textMuted))),
+              return SliverFillRemaining(
+                child: EmptyStateWidget(
+                  type: EmptyStateType.noSearch,
+                  onAction: () => ref.read(searchQueryProvider.notifier).state = '',
+                  actionLabel: 'Clear Search',
+                ),
               );
             }
             return SliverPadding(
@@ -201,6 +207,7 @@ class _FacultyTab extends ConsumerWidget {
                 delegate: SliverChildBuilderDelegate(
                   (ctx, i) => _FacultyCardWithQueueStatus(
                     faculty: sorted[i],
+                    index: i,
                     isSubscribed: subscribed.contains(sorted[i].id),
                     onTap: () => ctx.go('/faculty/${sorted[i].id}'),
                     onJoinQueue: onJoinQueue,
@@ -212,30 +219,19 @@ class _FacultyTab extends ConsumerWidget {
             );
           },
           loading: () => SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (_, i) => const SkeletonCard(height: 120),
+                (_, i) => SkeletonCard(height: 88, index: i),
                 childCount: 6,
               ),
             ),
           ),
           error: (e, _) => SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: AppColors.textMuted.withValues(alpha: 0.5)),
-                  const SizedBox(height: 16),
-                  Text('Failed to load faculty', style: TextStyle(color: AppColors.textMuted)),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () => ref.invalidate(facultyListProvider),
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
+            child: EmptyStateWidget(
+              type: EmptyStateType.noFaculty,
+              onAction: () => ref.invalidate(facultyListProvider),
+              actionLabel: 'Retry',
             ),
           ),
         ),
@@ -446,21 +442,22 @@ class _FacultyCardWithQueueStatus extends ConsumerWidget {
   final VoidCallback onTap;
   final void Function(BuildContext, Faculty) onJoinQueue;
   final VoidCallback onSubscribe;
-  
+  final int index;
+
   const _FacultyCardWithQueueStatus({
     required this.faculty,
     required this.isSubscribed,
     required this.onTap,
     required this.onJoinQueue,
     required this.onSubscribe,
+    this.index = 0,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authNotifierProvider).user;
     final queueAsync = ref.watch(consultationsByFacultyProvider(faculty.id));
-    
-    // Check if current student is already in queue for this faculty
+
     final isInQueue = queueAsync.maybeWhen(
       data: (list) => list.any((c) =>
           c.studentId == (user?.id ?? '') &&
@@ -476,6 +473,7 @@ class _FacultyCardWithQueueStatus extends ConsumerWidget {
       onQueue: faculty.isAvailable && !isInQueue ? () => onJoinQueue(context, faculty) : null,
       onSubscribe: onSubscribe,
       isInQueue: isInQueue,
+      index: index,
     );
   }
 }
@@ -487,7 +485,8 @@ class _FacultyCard extends StatelessWidget {
   final VoidCallback? onQueue;
   final VoidCallback onSubscribe;
   final bool isInQueue;
-  
+  final int index;
+
   const _FacultyCard({
     required this.faculty,
     required this.isSubscribed,
@@ -495,6 +494,7 @@ class _FacultyCard extends StatelessWidget {
     this.onQueue,
     required this.onSubscribe,
     this.isInQueue = false,
+    this.index = 0,
   });
 
   @override
@@ -510,6 +510,13 @@ class _FacultyCard extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor, width: borderWidth),
+        boxShadow: isSubscribed ? [
+          BoxShadow(
+            color: AppColors.warning.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ] : null,
       ),
       child: InkWell(
         onTap: onTap,
@@ -556,7 +563,7 @@ class _FacultyCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis),
                 ),
                 const SizedBox(width: 6),
-                _StatusBadge(faculty.status),
+                _StatusBadge(faculty.status, faculty.customStatusText),
               ]),
             ])),
             const SizedBox(width: 8),
@@ -629,13 +636,18 @@ class _FacultyCard extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final FacultyStatus status;
-  const _StatusBadge(this.status);
+  final String? customText;
+  const _StatusBadge(this.status, [this.customText]);
   @override
   Widget build(BuildContext context) {
+    final label = (status == FacultyStatus.custom && customText != null && customText!.isNotEmpty)
+        ? customText!
+        : status.label;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(color: status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-      child: Text(status.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: status.color)),
+      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: status.color),
+          maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }
