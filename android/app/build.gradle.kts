@@ -24,15 +24,6 @@ android {
         jvmTarget = "17"
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("/tmp/keystore.jks")
-            storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
-            keyAlias = System.getenv("CM_KEY_ALIAS")
-            keyPassword = System.getenv("CM_KEY_PASSWORD")
-        }
-    }
-
     defaultConfig {
         applicationId = "com.profhere.profhere"
         minSdk = flutter.minSdkVersion
@@ -43,7 +34,8 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Use debug signing for now - can be changed later for production
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

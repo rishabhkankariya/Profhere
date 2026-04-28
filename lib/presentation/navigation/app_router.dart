@@ -21,7 +21,6 @@ import '../screens/events/events_screen.dart';
 import '../screens/faculty/faculty_location_settings_screen.dart';
 import '../screens/student/student_location_access_screen.dart';
 import '../screens/admin/admin_location_access_screen.dart';
-import '../../data/repositories/firestore_faculty_repository.dart';
 
 class AppRoutes {
   static const splash                  = '/';
