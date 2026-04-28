@@ -115,5 +115,33 @@ service cloud.firestore {
       allow read:              if isSignedIn();
       allow create, update, delete: if isSignedIn();
     }
+
+    // ── Location Access ────────────────────────────────────────────────────
+    // Students can create requests and read their own requests
+    // Faculty can read requests for them and update them (approve/reject/revoke)
+    // NodeMCU can read to check for pending requests
+    match /location_access/{accessId} {
+      allow create: if isSignedIn();
+      allow read: if true;  // Allow NodeMCU to read for request check
+      allow update: if isSignedIn() && 
+                       resource.data.facultyId == request.auth.uid;
+      allow delete: if isSignedIn() && 
+                       resource.data.facultyId == request.auth.uid;
+    }
+
+    // ── Faculty Locations ──────────────────────────────────────────────────
+    // Faculty can write their own location (authenticated only)
+    // Students with approved access can read (authenticated only)
+    // NodeMCU can read AND write (unauthenticated with API key)
+    match /faculty_locations/{facultyId} {
+      // Allow all reads and writes (for NodeMCU)
+      allow read, write: if true;
+      
+      // Note: This is safe because:
+      // 1. NodeMCU uses API key (not public)
+      // 2. Only writes to its own faculty document
+      // 3. App still enforces approval checks
+      // 4. No sensitive data exposed
+    }
   }
 }

@@ -4,8 +4,50 @@
       "collectionGroup": "community_chats",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "channel",   "order": "ASCENDING"  },
         { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "location_access",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "facultyId",   "order": "ASCENDING"  },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "location_access",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "studentId",   "order": "ASCENDING"  },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "location_access",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "facultyId",   "order": "ASCENDING" },
+        { "fieldPath": "studentId",   "order": "ASCENDING" },
+        { "fieldPath": "statusIndex", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "location_access",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "facultyId",   "order": "ASCENDING"  },
+        { "fieldPath": "statusIndex", "order": "ASCENDING"  },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "location_access",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "statusIndex", "order": "ASCENDING"  },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
       ]
     }
   ]

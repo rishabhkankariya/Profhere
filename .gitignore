@@ -8,6 +8,10 @@
 build/
 *.iml
 
+# Development tools (not needed for production)
+.kiro/
+.orchids/
+
 # Android
 *.class
 *.log

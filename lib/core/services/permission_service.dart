@@ -21,4 +21,26 @@ class PermissionService {
       return false;
     }
   }
+
+  /// Requests location permission — needed for network_info_plus to read
+  /// the device's WiFi IP on Android 10+.
+  static Future<bool> requestLocation() async {
+    if (kIsWeb) return false;
+    try {
+      final status = await Permission.locationWhenInUse.request();
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> hasLocationPermission() async {
+    if (kIsWeb) return false;
+    try {
+      final status = await Permission.locationWhenInUse.status;
+      return status.isGranted;
+    } catch (_) {
+      return false;
+    }
+  }
 }

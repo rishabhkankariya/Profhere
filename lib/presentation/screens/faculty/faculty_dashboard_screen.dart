@@ -16,6 +16,8 @@ import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
 import '../../../core/services/widget_service.dart';
 import '../community/faculty_community_screen.dart';
+import '../../../presentation/providers/location_access_provider.dart';
+import 'faculty_location_update_screen.dart';
 
 class FacultyDashboardScreen extends ConsumerStatefulWidget {
   const FacultyDashboardScreen({super.key});
@@ -166,6 +168,10 @@ class _OverviewTab extends ConsumerWidget {
         _QuickStatusPanel(facultyId: facultyId, currentStatus: live?.status),
         const SizedBox(height: 12),
         _QueueSummary(facultyId: facultyId),
+        const SizedBox(height: 12),
+        _LocationUpdateCard(facultyId: facultyId),
+        const SizedBox(height: 12),
+        _LocationTrackerCard(facultyId: facultyId),
       ]),
     );
   }
@@ -1305,6 +1311,143 @@ class _TimePicker extends StatelessWidget {
             Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
             Text(formatted, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           ])),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Location Update Card (Faculty Overview) ──────────────────────────────────
+
+class _LocationUpdateCard extends StatelessWidget {
+  final String facultyId;
+  const _LocationUpdateCard({required this.facultyId});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const FacultyLocationUpdateScreen(),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primary,
+              AppColors.primary.withValues(alpha: 0.8),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Update My Location',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+              SizedBox(height: 3),
+              Text(
+                'Set your current floor location',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+            ]),
+          ),
+          const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Location Tracker Card (Faculty Overview) ─────────────────────────────────
+
+class _LocationTrackerCard extends ConsumerWidget {
+  final String facultyId;
+  const _LocationTrackerCard({required this.facultyId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pendingAsync = ref.watch(pendingAccessRequestsProvider(facultyId));
+    final approvedAsync = ref.watch(approvedAccessesForFacultyProvider(facultyId));
+
+    final pendingCount = pendingAsync.value?.length ?? 0;
+    final approvedCount = approvedAsync.value?.length ?? 0;
+
+    return GestureDetector(
+      onTap: () => context.push('/faculty-location-settings/$facultyId'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: pendingCount > 0
+                ? AppColors.warning.withValues(alpha: 0.5)
+                : AppColors.border,
+            width: pendingCount > 0 ? 1.5 : 1,
+          ),
+        ),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Smart Desk Tracker',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const SizedBox(height: 3),
+              Text(
+                '$approvedCount student${approvedCount == 1 ? '' : 's'} have access',
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+            ]),
+          ),
+          if (pendingCount > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.notifications_active_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 4),
+                Text('$pendingCount pending',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.warning)),
+              ]),
+            )
+          else
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
         ]),
       ),
     );

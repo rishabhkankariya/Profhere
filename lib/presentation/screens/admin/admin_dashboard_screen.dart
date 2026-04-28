@@ -17,6 +17,7 @@ import '../../providers/faculty_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
 import '../community/faculty_community_screen.dart';
+import '../admin/admin_location_access_screen.dart';
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 
 class _AdminDashboardState extends ConsumerState<AdminDashboardScreen> {
   int _tab = 0;
-  static const _tabs = ['Overview', 'Faculty', 'Students', 'Queue', 'Community'];
+  static const _tabs = ['Overview', 'Faculty', 'Students', 'Queue', 'Location', 'Community'];
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +77,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboardScreen> {
           _FacultyTab(),
           _StudentsTab(),
           _QueueTab(),
+          const AdminLocationAccessScreen(isEmbedded: true),
           const FacultyCommunityScreen(isEmbedded: true),
         ])),
       ]),
@@ -84,7 +86,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboardScreen> {
   }
 
   Widget? _buildFab() {
-    if (_tab == 1) {
+    if (_tab == 1) {  // Faculty tab
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [

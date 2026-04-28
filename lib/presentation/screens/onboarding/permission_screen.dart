@@ -13,6 +13,7 @@ class PermissionScreen extends StatefulWidget {
 class _PermissionScreenState extends State<PermissionScreen>
     with SingleTickerProviderStateMixin {
   bool _notifGranted = false;
+  bool _locationGranted = false;
   bool _loading = false;
   late final AnimationController _anim;
   late final Animation<double> _fade;
@@ -38,31 +39,36 @@ class _PermissionScreenState extends State<PermissionScreen>
   }
 
   Future<void> _checkExisting() async {
-    final notif = await PermissionService.hasNotificationPermission();
-    if (mounted) setState(() => _notifGranted = notif);
+    final notif     = await PermissionService.hasNotificationPermission();
+    final location  = await PermissionService.hasLocationPermission();
+    if (mounted) {
+      setState(() {
+        _notifGranted    = notif;
+        _locationGranted = location;
+      });
+    }
   }
 
   Future<void> _requestAll() async {
     setState(() => _loading = true);
-    
-    // Add a small delay to ensure the UI is ready for the system dialog
+
     await Future.delayed(const Duration(milliseconds: 300));
-    
-    // Request notification permission if not already granted
+
     if (!_notifGranted) {
       final g = await PermissionService.requestNotifications();
       if (mounted) setState(() => _notifGranted = g);
     }
-    
-    if (mounted) setState(() => _loading = false);
-    
-    // Wait a moment to show the updated UI with the granted status
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    // Only proceed if mounted and user is still on this screen
-    if (mounted) {
-      widget.onDone();
+
+    if (!_locationGranted) {
+      final g = await PermissionService.requestLocation();
+      if (mounted) setState(() => _locationGranted = g);
     }
+
+    if (mounted) setState(() => _loading = false);
+
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    if (mounted) widget.onDone();
   }
 
   @override
@@ -96,7 +102,7 @@ class _PermissionScreenState extends State<PermissionScreen>
 
                   // Title
                   const Text(
-                    'One permission\nto get started',
+                    'Two permissions\nto get started',
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
@@ -128,13 +134,14 @@ class _PermissionScreenState extends State<PermissionScreen>
 
                   const SizedBox(height: 16),
 
-                  // Future hint card (read-only, no request)
-                  _FutureCard(
+                  // Network / Location card — needed for WiFi IP detection
+                  _PermCard(
                     icon: Icons.wifi_rounded,
-                    color: AppColors.textMuted,
-                    title: 'Network access',
+                    color: const Color(0xFF0891B2),
+                    title: 'Network Access',
                     subtitle:
-                        'Will be used in a future update to detect faculty availability via campus Wi-Fi.',
+                        'Required to detect your Wi-Fi IP address and send your location to the Smart Desk Tracker.',
+                    granted: _locationGranted,
                   ),
 
                   const Spacer(),

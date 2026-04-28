@@ -13,6 +13,7 @@ import '../../providers/consultation_provider.dart';
 import '../../providers/academic_provider.dart';
 import '../../navigation/app_router.dart';
 import '../../widgets/faculty_avatar.dart';
+import '../../providers/location_access_provider.dart';
 
 class FacultyDetailScreen extends ConsumerWidget {
   final String facultyId;
@@ -353,41 +354,49 @@ class _DetailView extends ConsumerWidget {
   }
 
   Widget _buildActionRow(BuildContext context, WidgetRef ref, {required bool alreadyInQueue}) {
-    return Row(children: [
-      // Schedule button
-      Expanded(
-        child: OutlinedButton.icon(
-          onPressed: () => _showScheduleSheet(context, ref),
-          icon: const Icon(Icons.calendar_today_outlined, size: 16),
-          label: const Text('Schedule'),
+    final user = ref.watch(authNotifierProvider).user;
+    final studentId = user?.id ?? '';
+
+    return Column(children: [
+      // ── Schedule + Queue row ──────────────────────────────────────────────
+      Row(children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _showScheduleSheet(context, ref),
+            icon: const Icon(Icons.calendar_today_outlined, size: 16),
+            label: const Text('Schedule'),
+          ),
         ),
-      ),
-      const SizedBox(width: 12),
-      // Queue button
-      Expanded(
-        child: alreadyInQueue
-            ? Container(
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.successBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.success),
+        const SizedBox(width: 12),
+        Expanded(
+          child: alreadyInQueue
+              ? Container(
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.successBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.success),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+                      SizedBox(width: 8),
+                      Text('Already in Queue',
+                          style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                )
+              : ElevatedButton.icon(
+                  onPressed: () => _showQueueSheet(context, ref),
+                  icon: const Icon(Icons.queue_rounded, size: 16),
+                  label: const Text('Join Queue'),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
-                    SizedBox(width: 8),
-                    Text('Already in Queue', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              )
-            : ElevatedButton.icon(
-                onPressed: () => _showQueueSheet(context, ref),
-                icon: const Icon(Icons.queue_rounded, size: 16),
-                label: const Text('Join Queue'),
-              ),
-      ),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      // ── Location Access button ────────────────────────────────────────────
+      _LocationAccessButton(faculty: faculty, studentId: studentId),
     ]);
   }
 
@@ -753,6 +762,85 @@ class _ScheduleCard extends StatelessWidget {
           ]),
         ),
       ]),
+    );
+  }
+}
+
+// ─── Location Access Button (Student View) ────────────────────────────────────
+
+class _LocationAccessButton extends ConsumerWidget {
+  final Faculty faculty;
+  final String studentId;
+  const _LocationAccessButton({required this.faculty, required this.studentId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the student's existing request for this faculty
+    final requestsAsync = ref.watch(accessRequestsFromStudentProvider(studentId));
+
+    return requestsAsync.when(
+      data: (requests) {
+        final existing = requests.where((r) => r.facultyId == faculty.id).firstOrNull;
+
+        Color bgColor;
+        Color borderColor;
+        Color iconColor;
+        IconData icon;
+        String label;
+
+        if (existing == null) {
+          bgColor     = AppColors.primaryLight;
+          borderColor = AppColors.primary.withValues(alpha: 0.4);
+          iconColor   = AppColors.primary;
+          icon        = Icons.location_on_outlined;
+          label       = 'Request Location Access';
+        } else if (existing.isPending) {
+          bgColor     = AppColors.warning.withValues(alpha: 0.1);
+          borderColor = AppColors.warning.withValues(alpha: 0.4);
+          iconColor   = AppColors.warning;
+          icon        = Icons.hourglass_empty_rounded;
+          label       = 'Location Access Pending…';
+        } else if (existing.isApproved) {
+          bgColor     = AppColors.successBg;
+          borderColor = AppColors.success.withValues(alpha: 0.4);
+          iconColor   = AppColors.success;
+          icon        = Icons.location_on_rounded;
+          label       = 'View Location Access';
+        } else {
+          bgColor     = AppColors.surfaceElevated;
+          borderColor = AppColors.border;
+          iconColor   = AppColors.textMuted;
+          icon        = Icons.location_off_outlined;
+          label       = 'Request Location Access Again';
+        }
+
+        return GestureDetector(
+          onTap: () => context.push(
+            '/student-location-access/${faculty.id}',
+          ),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 18, color: iconColor),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                  )),
+            ]),
+          ),
+        );
+      },
+      loading: () => const SizedBox(height: 44, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

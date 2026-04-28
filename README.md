@@ -10,6 +10,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?logo=firebase)](https://firebase.google.com)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Web-green)](https://profhere.web.app)
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue)](https://github.com)
+[![License](https://img.shields.io/badge/License-MIT-lightgrey)](LICENSE)
 
 **Live Web App → [profhere.web.app](https://profhere.web.app)**
 
@@ -69,318 +70,266 @@ ProfHere is a cross-platform campus management application built with Flutter an
 
 ---
 
-## Architecture
+## 🔌 NodeMCU Setup
 
-ProfHere follows a clean layered architecture:
+### Hardware Needed:
+- NodeMCU ESP8266
+- 4x LEDs (optional): Green, Blue, Yellow, Red
+- 4x 220Ω Resistors
+- USB cable & power adapter
 
-```
-lib/
-├── core/
-│   ├── constants/        # App colors, theme tokens
-│   ├── services/         # Notification, Widget, Permission services
-│   ├── theme/            # Material theme configuration
-│   └── utils/            # Toast helpers, formatters
-│
-├── data/
-│   ├── datasources/      # Hive local storage (settings only)
-│   ├── mock/             # Firestore seed data for first launch
-│   ├── models/           # Hive-adapted data models
-│   └── repositories/     # Firestore repository implementations
-│
-├── domain/
-│   ├── entities/         # Pure Dart domain models (User, Faculty, Event…)
-│   └── repositories/     # Abstract repository interfaces
-│
-└── presentation/
-    ├── navigation/       # GoRouter configuration and route guards
-    ├── providers/        # Riverpod state providers
-    ├── screens/          # All UI screens by feature
-    └── widgets/          # Shared reusable widgets
-```
+### Quick Setup:
 
-### State Management
-Riverpod 2.x is used throughout:
-- `StreamProvider` — live Firestore streams (faculty list, events, consultations)
-- `StateNotifierProvider` — mutable state with async operations (auth, queue actions)
-- `Provider` — dependency injection (repositories, services)
+1. **Get Firebase Credentials**
+   - Project ID: Firebase Console → Settings → Project ID
+   - Web API Key: Firebase Console → Settings → Web API Key
+   - Faculty ID: Firebase Console → Authentication → Users → UID
 
-### Navigation
-GoRouter with redirect guards:
-- Unauthenticated users are redirected to `/login`
-- Faculty with `mustChangePassword` flag are redirected to the force-change screen
-- Role-based home routes: Admin → `/admin`, Faculty → `/faculty-dashboard`, Student → `/faculties`
+2. **Update Code**
+   - Open `nodemcu/faculty_location_tracker_firestore.ino`
+   - Update WiFi credentials
+   - Update Firebase credentials
+   - Update faculty location details
+
+3. **Upload to NodeMCU**
+   - Open Arduino IDE
+   - Select Board: NodeMCU 1.0 (ESP-12E)
+   - Select Port
+   - Click Upload
+
+4. **Verify**
+   - Open Serial Monitor (115200 baud)
+   - Should see: "✅ Connected! Location updated!"
+
+**Detailed guide**: See `nodemcu/FIREBASE_SETUP.md`
 
 ---
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| UI Framework | Flutter 3.x |
-| State Management | Riverpod 2.x |
-| Navigation | GoRouter 17.x |
-| Backend / Database | Firebase Firestore |
-| Authentication | Firebase Auth (Email + Google) |
-| Push Notifications | Firebase Cloud Messaging (FCM) |
-| File Storage | Firebase Storage |
-| Local Storage | Hive (settings only) |
-| QR Codes | qr_flutter |
-| Home Widget | home_widget (Android) |
-| Notifications | flutter_local_notifications |
-| Permissions | permission_handler |
-
----
-
-## Project Structure — Key Files
+## 🗂️ Project Structure
 
 ```
-lib/
-├── main.dart                          # App entry, splash/permission flow
-├── firebase_options.dart              # Firebase project config
-│
-├── core/
-│   ├── constants/app_colors.dart      # Design system colors
-│   ├── services/notification_service.dart
-│   ├── services/permission_service.dart
-│   ├── services/widget_service.dart   # Android home widget sync
-│   └── theme/app_theme.dart
-│
-├── data/repositories/
-│   ├── firestore_auth_repository.dart # Auth: login, register, Google, phone
-│   ├── firestore_event_repository.dart
-│   ├── firestore_faculty_repository.dart
-│   └── firestore_consultation_repository.dart
-│
-├── domain/entities/
-│   ├── user.dart                      # User model with isCR flag
-│   ├── faculty.dart                   # Faculty with FacultyStatus enum
-│   ├── consultation.dart              # Queue entry model
-│   ├── event.dart                     # Campus event model
-│   └── academic.dart                  # Timetable, Subject, Marks models
-│
-└── presentation/
-    ├── screens/
-    │   ├── auth/                      # Login, Register, Phone auth
-    │   ├── faculty/                   # Faculty list, detail, dashboard
-    │   ├── admin/                     # Admin dashboard
-    │   ├── events/                    # Events board + post sheet
-    │   ├── community/                 # Chat screens
-    │   ├── profile/                   # Edit profile
-    │   ├── todo/                      # Todo list
-    │   ├── onboarding/                # Permission screen
-    │   └── splash_screen.dart         # Animated splash
-    └── providers/
-        ├── auth_provider.dart
-        ├── faculty_provider.dart
-        ├── event_provider.dart
-        ├── consultation_provider.dart
-        └── admin_provider.dart
+Profhere/
+├── lib/
+│   ├── domain/
+│   │   ├── entities/
+│   │   │   ├── faculty_location.dart          # Location data model
+│   │   │   └── location_access.dart           # Access request model
+│   │   └── repositories/
+│   ├── data/
+│   │   └── repositories/
+│   │       └── firestore_faculty_location_repository.dart
+│   ├── presentation/
+│   │   ├── providers/
+│   │   │   ├── faculty_location_provider.dart
+│   │   │   └── location_access_provider.dart
+│   │   └── screens/
+│   │       ├── student/
+│   │       │   └── student_location_access_screen.dart
+│   │       └── faculty/
+│   │           └── faculty_location_update_screen.dart
+│   └── core/
+│       └── services/
+├── nodemcu/
+│   ├── faculty_location_tracker_firestore.ino  # Main NodeMCU code
+│   ├── FIREBASE_SETUP.md                       # Setup guide
+│   └── README.md                               # Quick start
+├── TESTING_GUIDE.md                            # Complete testing guide
+├── FACULTY_LOCATION_TRACKING.md                # System documentation
+├── COMPLETE_SYSTEM_OVERVIEW.md                 # Full overview
+├── PROJECT_STATUS_AND_ROADMAP.md               # Current status & roadmap
+└── README.md                                   # This file
 ```
 
 ---
 
-## Getting Started
+## 🔐 Security & Privacy
 
-### Prerequisites
+### Security Features:
+- ✅ **Permission-based** - Faculty must approve each student
+- ✅ **Firebase Security Rules** - Database-level access control
+- ✅ **No exact GPS** - Only shows floor/building
+- ✅ **Time-delayed** - Updates every 10-15 mins, not real-time
+- ✅ **Audit trail** - All requests logged
+- ✅ **Revoke anytime** - Faculty can remove access
 
-- Flutter SDK `>=3.0.0`
-- Dart SDK `>=3.0.0`
-- Firebase project with Firestore, Auth, Storage, and Messaging enabled
-- Android Studio or VS Code with Flutter extension
-- Node.js (for Firebase CLI)
+### Firebase Security Rules:
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Faculty Locations - Only approved students can read
+    match /faculty_locations/{facultyId} {
+      allow write: if request.auth != null && request.auth.uid == facultyId;
+      allow read: if request.auth != null && hasApprovedAccess();
+    }
+    
+    // Location Access Requests
+    match /location_access/{accessId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && isOwner();
+      allow update: if request.auth != null && isFaculty();
+    }
+  }
+}
+```
 
-### 1. Clone the repository
+---
 
+## 📊 Current Status
+
+### ✅ Completed (65%)
+- [x] Student request/view location
+- [x] Faculty approve/reject/revoke
+- [x] Real-time location display
+- [x] Revoke & request again flow
+- [x] NodeMCU code (ready to deploy)
+- [x] Complete documentation
+
+### ❌ Remaining (35%)
+- [ ] Faculty location update in menu
+- [ ] Firebase security rules applied
+- [ ] NodeMCU deployed to faculty desks
+- [ ] LED indicators integrated
+- [ ] Push notifications
+- [ ] Admin panel
+
+**See `PROJECT_STATUS_AND_ROADMAP.md` for detailed roadmap**
+
+---
+
+## 🧪 Testing
+
+### Quick Test:
 ```bash
-git clone https://github.com/your-username/profhere.git
-cd profhere
+# 1. Install app
+adb install build/app/outputs/flutter-apk/app-debug.apk
+
+# 2. Test as Student
+- Login as student
+- Request access from faculty
+- Wait for approval
+- View location
+
+# 3. Test as Faculty
+- Login as faculty
+- Approve student request
+- Update location (manual)
+- Revoke access
+
+# 4. Test Revoke Flow
+- Student should see "Access Revoked"
+- Student can tap "Request Again"
 ```
 
-### 2. Install dependencies
-
-```bash
-flutter pub get
-```
-
-### 3. Firebase setup
-
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable **Firestore**, **Authentication** (Email/Password + Google), **Storage**, and **Cloud Messaging**
-3. Download `google-services.json` → place in `android/app/`
-4. Download `GoogleService-Info.plist` → place in `ios/Runner/`
-5. Run FlutterFire CLI to generate `lib/firebase_options.dart`:
-
-```bash
-dart pub global activate flutterfire_cli
-flutterfire configure
-```
-
-### 4. Deploy Firestore rules
-
-```bash
-firebase deploy --only firestore:rules
-```
-
-### 5. Run the app
-
-```bash
-# Android
-flutter run
-
-# Web
-flutter run -d chrome
-
-# Release APK (split by architecture)
-flutter build apk --release --split-per-abi
-
-# Release Web
-flutter build web --release
-firebase deploy --only hosting
-```
+**Complete testing guide**: See `TESTING_GUIDE.md`
 
 ---
 
-## Firestore Data Model
+## 🐛 Known Issues
 
+### Issue 1: Location Not Showing
+**Problem**: Students see "No Location Data"  
+**Cause**: Faculty hasn't updated location yet  
+**Fix**: Faculty needs to update location manually or via NodeMCU
+
+### Issue 2: Firebase Rules Too Permissive
+**Problem**: Security rules allow all access  
+**Cause**: Using test rules  
+**Fix**: Apply production rules (see Security section)
+
+### Issue 3: LED Not Integrated
+**Problem**: LEDs available but not used  
+**Cause**: Not implemented yet  
+**Fix**: See `PROJECT_STATUS_AND_ROADMAP.md` Task 3
+
+---
+
+## 💡 LED Indicators (Optional)
+
+### LED System:
+- 🟢 **Green LED** - Power/WiFi status
+- 🔵 **Blue LED** - Location update in progress
+- 🟡 **Yellow LED** - Pending access request
+- 🔴 **Red LED** - Student viewing location
+
+### Wiring:
 ```
-users/{uid}
-  name, email, roleIndex (0=student, 1=admin, 2=faculty)
-  studentCode, department, yearOfStudy
-  isCR (bool) — Class Representative flag
-  mustChangePassword (bool)
+NodeMCU Pin → 220Ω Resistor → LED (+) → LED (-) → GND
 
-faculty/{id}
-  name, email, department, building, cabinId
-  statusIndex, customStatusText, activeContext
-  specialization, zone, avatarUrl
-
-consultations/{id}
-  facultyId, studentId, studentName, purpose
-  status (pending | inProgress | completed | cancelled)
-  position, waitTimeMinutes, requestedAt
-
-events/{id}
-  authorId, authorName, authorRole
-  title, description, category (0-5)
-  eventDate, createdAt, isApproved
-  imageUrl (base64, max 700KB)
-
-timetable/{id}
-  facultyId, subjectName, room
-  dayOfWeek (1-7), startTime, endTime
-
-community/{id}
-  channel (facultyId), senderId, senderName
-  text, timestamp, reactions
-
-todos/{id}
-  userId, title, description
-  priority, dueDate, isCompleted
-```
-
----
-
-## User Roles
-
-| Role | Access |
-|---|---|
-| **Student** | Browse faculty, join queues, view events, community chat, todo list |
-| **Student (CR)** | All student access + post campus events |
-| **Faculty** | Status management, queue management, timetable, assign CR, community |
-| **Admin** | Full access — manage users, faculty, events, view all consultations |
-
-### Default Demo Accounts
-
-| Role | Email | Password |
-|---|---|---|
-| Admin | admin@profhere.com | admin123 |
-| Faculty | (created by admin) | (shown in admin dashboard) |
-| Student | Register via app | (self-registered) |
-
----
-
-## Android Home Widget
-
-Faculty members can change their availability status directly from the Android home screen without opening the app.
-
-**Setup:**
-1. Long-press the home screen
-2. Select Widgets → ProfHere
-3. Add the widget
-4. Tap any status button to update instantly
-
-The widget syncs bidirectionally — changes made in the app reflect on the widget and vice versa.
-
----
-
-## Build & Deploy
-
-### Android APK
-
-```bash
-# Debug
-flutter build apk --debug
-
-# Release (split by CPU architecture — smaller file sizes)
-flutter build apk --release --split-per-abi
-
-# Output files
-build/app/outputs/flutter-apk/
-├── app-armeabi-v7a-release.apk   # ARM 32-bit (older devices)
-├── app-arm64-v8a-release.apk     # ARM 64-bit (modern devices) ← recommended
-└── app-x86_64-release.apk        # x86 64-bit (tablets, emulators)
+D1 → Green LED  (Status)
+D2 → Blue LED   (Update)
+D3 → Yellow LED (Request)
+D4 → Red LED    (Viewing)
 ```
 
-### Web
-
-```bash
-flutter build web --release
-firebase deploy --only hosting
-```
-
-### App Icons
-
-```bash
-dart run flutter_launcher_icons
-```
+**See `PROJECT_STATUS_AND_ROADMAP.md` for LED integration guide**
 
 ---
 
-## CI/CD
+## 📚 Documentation
 
-GitHub Actions workflows are included for Firebase Hosting:
-
-- `.github/workflows/firebase-hosting-merge.yml` — deploys to production on merge to `main`
-- `.github/workflows/firebase-hosting-pull-request.yml` — deploys preview channel on pull requests
-
----
-
-## Environment Notes
-
-- **Minimum Android SDK:** 21 (Android 5.0)
-- **Target Android SDK:** Flutter default (latest stable)
-- **Java/Kotlin:** Java 17, Kotlin JVM target 17
-- **Web renderer:** CanvasKit (default)
-- **App size:** ~20-25 MB APK, ~38 MB web bundle
+- **`README.md`** - This file (quick start)
+- **`TESTING_GUIDE.md`** - Complete testing procedures
+- **`FACULTY_LOCATION_TRACKING.md`** - System documentation
+- **`COMPLETE_SYSTEM_OVERVIEW.md`** - Full system overview
+- **`PROJECT_STATUS_AND_ROADMAP.md`** - Current status & roadmap
+- **`nodemcu/FIREBASE_SETUP.md`** - Firebase configuration
+- **`nodemcu/README.md`** - NodeMCU quick start
 
 ---
 
-## Known Limitations
+## 🎯 Next Steps
 
-- Image uploads are stored as base64 in Firestore (max 700KB). For production use, migrate to Firebase Storage URLs.
-- Phone authentication is configured but requires additional Firebase setup for production.
-- The Android home widget requires Android 5.0+ and does not support iOS.
+### Immediate (Critical):
+1. ✅ Add "Update My Location" to faculty menu
+2. ✅ Apply Firebase security rules
+3. ✅ Setup one NodeMCU device
+4. ✅ Test end-to-end flow
+
+### Short-term (High Priority):
+1. ✅ Wire LEDs to NodeMCU
+2. ✅ Add LED control code
+3. ✅ Test LED indicators
+4. ✅ Deploy to all faculty
+
+### Long-term (Nice to Have):
+1. ✅ Push notifications
+2. ✅ Admin panel
+3. ✅ Analytics dashboard
+4. ✅ Queue management
 
 ---
 
-## Contributing
+## 💰 Cost Estimation
+
+### Per Faculty:
+- NodeMCU ESP8266: $3-5
+- LEDs & Resistors: $1-2
+- USB Cable & Adapter: $2-3
+- **Total**: ~$6-10 per faculty
+
+### For 50 Faculty:
+- Hardware: $300-500 (one-time)
+- Firebase: Free tier (or $25-50/month if exceeded)
+- **Total**: ~$300-500 one-time cost
+
+---
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m 'Add your feature'`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
 
+---
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
 
 <div align="center">
 
@@ -389,12 +338,3 @@ Built with Flutter · Powered by Firebase
 **[profhere.web.app](https://profhere.web.app)**
 
 </div>
-s
-## Changelog
-
-### v1.0.0 (Initial Release)
-- Launched ProfHere with core features for students, faculty, and admins.
-- Cross-platform support for Android and Web.
-- Real-time status updates, consultation queues, and event management.
-
-*For the latest updates, check the [GitHub releases](https://github.com/your-username/profhere/releases).*
