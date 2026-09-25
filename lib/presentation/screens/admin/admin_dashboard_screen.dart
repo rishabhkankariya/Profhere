@@ -665,6 +665,7 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
                       onUnblock: () => ref.read(adminUserNotifierProvider.notifier).unblockStudent(list[i].id),
                       onDelete: () => _confirmDeleteStudent(context, list[i]),
                       onView: () => _showStudentDetail(context, list[i]),
+                      onPassword: () => _showStudentPasswordSheet(context, list[i]),
                     ),
                   ),
           ),
@@ -696,6 +697,14 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
     );
   }
 
+  void _showStudentPasswordSheet(BuildContext context, User student) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _StudentPasswordSheet(student: student),
+    );
+  }
+
   void _showStudentDetail(BuildContext context, User s) {
     showModalBottomSheet(
       context: context,
@@ -708,9 +717,9 @@ class _StudentsTabState extends ConsumerState<_StudentsTab> {
 class _StudentCard extends StatelessWidget {
   final User student;
   final bool isBlocked;
-  final VoidCallback onBlock, onUnblock, onDelete, onView;
+  final VoidCallback onBlock, onUnblock, onDelete, onView, onPassword;
   const _StudentCard({required this.student, required this.isBlocked,
-      required this.onBlock, required this.onUnblock, required this.onDelete, required this.onView});
+      required this.onBlock, required this.onUnblock, required this.onDelete, required this.onView, required this.onPassword});
 
   @override
   Widget build(BuildContext context) {
@@ -758,14 +767,16 @@ class _StudentCard extends StatelessWidget {
           icon: const Icon(Icons.more_vert_rounded, size: 18, color: AppColors.textMuted),
           onSelected: (v) {
             switch (v) {
-              case 'view':    onView();
-              case 'block':   onBlock();
-              case 'unblock': onUnblock();
-              case 'delete':  onDelete();
+              case 'view':     onView();
+              case 'password': onPassword();
+              case 'block':    onBlock();
+              case 'unblock':  onUnblock();
+              case 'delete':   onDelete();
             }
           },
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'view', child: Row(children: [Icon(Icons.info_outline_rounded, size: 16), SizedBox(width: 8), Text('View Details')])),
+            const PopupMenuItem(value: 'password', child: Row(children: [Icon(Icons.key_rounded, size: 16), SizedBox(width: 8), Text('Password')])),
             if (!isBlocked)
               const PopupMenuItem(value: 'block', child: Row(children: [Icon(Icons.block_rounded, size: 16, color: AppColors.error), SizedBox(width: 8), Text('Block', style: TextStyle(color: AppColors.error))])),
             if (isBlocked)
@@ -1112,6 +1123,8 @@ class _FacultyPasswordSheet extends ConsumerStatefulWidget {
 class _FacultyPasswordSheetState extends ConsumerState<_FacultyPasswordSheet> {
   bool _loading = false;
   String? _generatedDemo;
+  final _customPasswordCtrl = TextEditingController();
+  bool _showCustomPassword = false;
 
   Future<void> _generateDemo() async {
     setState(() => _loading = true);
@@ -1129,6 +1142,39 @@ class _FacultyPasswordSheetState extends ConsumerState<_FacultyPasswordSheet> {
         backgroundColor: AppColors.error,
       ));
       ref.read(authNotifierProvider.notifier).clearError();
+    }
+  }
+
+  Future<void> _setCustomPassword() async {
+    if (_customPasswordCtrl.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Password must be at least 6 characters'),
+        backgroundColor: AppColors.error,
+      ));
+      return;
+    }
+
+    setState(() => _loading = true);
+    await ref.read(authNotifierProvider.notifier).updateUserPassword(
+      userEmail: widget.faculty.email,
+      newPassword: _customPasswordCtrl.text,
+    );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    
+    final err = ref.read(authNotifierProvider).error;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: AppColors.error,
+      ));
+      ref.read(authNotifierProvider.notifier).clearError();
+    } else {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Password reset email sent to ${widget.faculty.email}'),
+        backgroundColor: AppColors.success,
+      ));
     }
   }
 
@@ -1183,7 +1229,7 @@ class _FacultyPasswordSheetState extends ConsumerState<_FacultyPasswordSheet> {
                 ),
               ]),
               const SizedBox(height: 8),
-              const Text('A password reset email has also been sent to the faculty. They must change their password on first login.', style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.4)),
+              const Text('Faculty must change their password on first login.', style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.4)),
             ]),
           ),
           const SizedBox(height: 16),
@@ -1193,32 +1239,81 @@ class _FacultyPasswordSheetState extends ConsumerState<_FacultyPasswordSheet> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
             child: const Text(
-              'This will create a Firebase Auth account with an auto-generated demo password. A password reset email is sent automatically. The faculty must change their password on first login.',
+              'Generate a demo password or set a custom password for this faculty member.',
               style: TextStyle(fontSize: 12, color: AppColors.primary, height: 1.4),
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _loading ? null : _generateDemo,
-            child: _loading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Generate Demo Password & Create Account'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              final email = widget.faculty.email;
-              Navigator.pop(context);
-              await ref.read(authNotifierProvider.notifier).sendFacultyPasswordReset(email);
-              messenger.showSnackBar(SnackBar(
-                content: Text('Reset email sent to $email'),
-                backgroundColor: AppColors.success,
-              ));
-            },
-            icon: const Icon(Icons.email_outlined, size: 16),
-            label: const Text('Send reset email only'),
-          ),
+          
+          // Toggle between demo and custom password
+          Row(children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _showCustomPassword = false),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: !_showCustomPassword ? AppColors.primary : AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primary),
+                  ),
+                  child: Text('Demo Password',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        color: !_showCustomPassword ? Colors.white : AppColors.primary,
+                      )),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _showCustomPassword = true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _showCustomPassword ? AppColors.primary : AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primary),
+                  ),
+                  child: Text('Custom Password',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        color: _showCustomPassword ? Colors.white : AppColors.primary,
+                      )),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          if (_showCustomPassword) ...[
+            TextField(
+              controller: _customPasswordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'New Password',
+                hintText: 'Enter custom password (min 6 chars)',
+                prefixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loading ? null : _setCustomPassword,
+              child: _loading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Set Custom Password'),
+            ),
+          ] else ...[
+            ElevatedButton(
+              onPressed: _loading ? null : _generateDemo,
+              child: _loading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Generate Demo Password & Create Account'),
+            ),
+          ],
         ],
       ]),
     );
@@ -1758,6 +1853,82 @@ class _PwField extends StatelessWidget {
           onPressed: onToggle,
         ),
       ),
+    );
+  }
+}
+
+// ─── Student Password Sheet ───────────────────────────────────────────────────
+
+class _StudentPasswordSheet extends ConsumerStatefulWidget {
+  final User student;
+  const _StudentPasswordSheet({required this.student});
+  @override
+  ConsumerState<_StudentPasswordSheet> createState() => _StudentPasswordSheetState();
+}
+
+class _StudentPasswordSheetState extends ConsumerState<_StudentPasswordSheet> {
+  bool _loading = false;
+
+  Future<void> _resetPassword() async {
+    setState(() => _loading = true);
+    await ref.read(authNotifierProvider.notifier).updateUserPassword(
+      userEmail: widget.student.email,
+      newPassword: 'temp123', // Temporary password, user will reset via email
+    );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    
+    final err = ref.read(authNotifierProvider).error;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: AppColors.error,
+      ));
+      ref.read(authNotifierProvider.notifier).clearError();
+    } else {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Password reset email sent to ${widget.student.email}'),
+        backgroundColor: AppColors.success,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 24, right: 24, top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(width: 40, height: 40,
+              decoration: BoxDecoration(color: AppColors.infoLight, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.key_rounded, color: AppColors.info, size: 20)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.student.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            Text(widget.student.email, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ])),
+        ]),
+        const SizedBox(height: 16),
+
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: AppColors.infoLight, borderRadius: BorderRadius.circular(10)),
+          child: const Text(
+            'Send a password reset email to this student. They will be able to set a new password.',
+            style: TextStyle(fontSize: 12, color: AppColors.info, height: 1.4),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        ElevatedButton(
+          onPressed: _loading ? null : _resetPassword,
+          child: _loading
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Send Password Reset Email'),
+        ),
+      ]),
     );
   }
 }

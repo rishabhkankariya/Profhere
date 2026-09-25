@@ -18,6 +18,7 @@ class AppColors {
   static const Color errorBg    = Color(0xFFFEF2F2);
   static const Color info    = Color(0xFF0284C7);
   static const Color infoBg     = Color(0xFFF0F9FF);
+  static const Color infoLight  = Color(0xFFDEF7FF);
 
   // Faculty Status
   static const Color available    = Color(0xFF16A34A);

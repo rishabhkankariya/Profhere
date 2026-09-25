@@ -6,32 +6,52 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email.matches('.*admin.*');
+    }
+
+    function isCR() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCR == true;
+    }
+
+    function isFaculty() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'faculty';
+    }
+
     // ── Users ──────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read:   if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSignedIn() && (
         request.auth.uid == userId
-        || request.auth.token.email.matches('.*admin.*')
+        || isAdmin()
       );
-      allow delete: if isSignedIn()
-        && request.auth.token.email.matches('.*admin.*');
+      allow delete: if isAdmin();
     }
 
     // ── Faculty ────────────────────────────────────────────────────────────
     match /faculty/{facultyId} {
       allow read:   if true;
-      allow create, delete: if isSignedIn()
-        && request.auth.token.email.matches('.*admin.*');
+      allow create, delete: if isAdmin();
       allow update: if isSignedIn();
     }
 
     // ── Events ────────────────────────────────────────────────────────────
     match /events/{eventId} {
       allow read:   if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow create: if isSignedIn() && (isCR() || isFaculty() || isAdmin());
+      allow update: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid ||
+        isFaculty() || isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid ||
+        isFaculty() || isAdmin()
+      );
     }
 
     // ── Consultations ──────────────────────────────────────────────────────
@@ -106,8 +126,7 @@ service cloud.firestore {
     // ── College students ───────────────────────────────────────────────────
     match /college_students/{docId} {
       allow read:  if isSignedIn();
-      allow write: if isSignedIn()
-        && request.auth.token.email.matches('.*admin.*');
+      allow write: if isAdmin();
     }
 
     // ── Class divisions ────────────────────────────────────────────────────

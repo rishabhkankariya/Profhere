@@ -460,6 +460,10 @@ class _FacultyCardWithQueueStatus extends ConsumerWidget {
     final user = ref.watch(authNotifierProvider).user;
     final queueAsync = ref.watch(consultationsByFacultyProvider(faculty.id));
     
+    // Get live faculty data to ensure status consistency
+    final liveAsync = ref.watch(facultyByIdStreamProvider(faculty.id));
+    final liveFaculty = liveAsync.value ?? faculty;
+    
     // Check if current student is already in queue for this faculty
     final isInQueue = queueAsync.maybeWhen(
       data: (list) => list.any((c) =>
@@ -470,10 +474,10 @@ class _FacultyCardWithQueueStatus extends ConsumerWidget {
     );
 
     return _FacultyCard(
-      faculty: faculty,
+      faculty: liveFaculty, // Use live faculty data
       isSubscribed: isSubscribed,
       onTap: onTap,
-      onQueue: faculty.isAvailable && !isInQueue ? () => onJoinQueue(context, faculty) : null,
+      onQueue: liveFaculty.isAvailable && !isInQueue ? () => onJoinQueue(context, liveFaculty) : null,
       onSubscribe: onSubscribe,
       isInQueue: isInQueue,
     );
@@ -556,7 +560,7 @@ class _FacultyCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis),
                 ),
                 const SizedBox(width: 6),
-                _StatusBadge(faculty.status),
+                _StatusBadge(faculty.status, faculty.customStatusText),
               ]),
             ])),
             const SizedBox(width: 8),
@@ -629,13 +633,21 @@ class _FacultyCard extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final FacultyStatus status;
-  const _StatusBadge(this.status);
+  final String? customStatusText;
+  const _StatusBadge(this.status, [this.customStatusText]);
+  
   @override
   Widget build(BuildContext context) {
+    final displayText = (status == FacultyStatus.custom && customStatusText != null && customStatusText!.isNotEmpty)
+        ? customStatusText!
+        : status.label;
+        
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(color: status.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-      child: Text(status.label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: status.color)),
+      child: Text(displayText, 
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: status.color),
+          maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }
